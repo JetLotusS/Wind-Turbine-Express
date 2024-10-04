@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -24,7 +25,8 @@ endif()
 
 install(
   PROGRAMS 
-    src/dejavu.py
+    src/thruster_driver.py
+    src/wte_localisation.py
   DESTINATION 
     lib/${PROJECT_NAME}
 )

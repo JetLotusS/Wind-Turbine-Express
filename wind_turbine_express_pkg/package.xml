@@ -3,14 +3,15 @@
 <package format="3">
   <name>wind_turbine_express_pkg</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kevin@todo.todo">kevin</maintainer>
+  <description>WTE's package for aquabot challenge</description>
+  <maintainer email="corvisier.k@gmail.com">kevin</maintainer>
   <license>TODO: License declaration</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
