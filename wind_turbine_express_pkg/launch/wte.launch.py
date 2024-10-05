@@ -10,7 +10,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     ld = LaunchDescription()
 
-    default_world_name = 'aquabot_regatta'
+    default_world_name = 'aquabot_windturbines_medium'
     #aquabot_regatta
     #aquabot_windturbines_easy
     #aquabot_windturbines_medium
@@ -27,7 +27,14 @@ def generate_launch_description():
             launch_arguments={}.items()
     )
 
+    aquabot_system = Node(
+        package="wind_turbine_express_pkg",
+        executable="wte_aquabot.py",
+        output="screen",
+    )
+
     ld.add_action(world_arg)
     ld.add_action(aquabot_competition_launch_file)
+    ld.add_action(aquabot_system)
 
     return ld

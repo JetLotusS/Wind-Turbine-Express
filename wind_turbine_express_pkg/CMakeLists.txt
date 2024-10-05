@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -27,6 +28,7 @@ install(
   PROGRAMS 
     src/thruster_driver.py
     src/wte_localisation.py
+    src/wte_aquabot.py
   DESTINATION 
     lib/${PROJECT_NAME}
 )
