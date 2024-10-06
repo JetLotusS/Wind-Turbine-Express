@@ -11,6 +11,8 @@ find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(OpenCV REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -29,6 +31,7 @@ install(
     src/thruster_driver.py
     src/wte_localisation.py
     src/wte_aquabot.py
+    src/wte_cv_module.py
   DESTINATION 
     lib/${PROJECT_NAME}
 )

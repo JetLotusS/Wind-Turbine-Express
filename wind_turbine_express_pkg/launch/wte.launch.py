@@ -35,6 +35,6 @@ def generate_launch_description():
 
     ld.add_action(world_arg)
     ld.add_action(aquabot_competition_launch_file)
-    ld.add_action(aquabot_system)
+    #ld.add_action(aquabot_system)
 
     return ld
