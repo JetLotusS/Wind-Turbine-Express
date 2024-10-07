@@ -2,7 +2,7 @@
 
 ### Adding OpenCV
 
-You'll need to build OpenCV with the proper dependencies, including QUIRC. Here are simplified steps:
+You'll need to build OpenCV with the proper dependencies.
 
 ```bash
 sudo apt update
@@ -24,4 +24,18 @@ cd build
 cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=/usr/local ..
 make -j8
 sudo make install
+```
+### Starting commands
+
+In cmd #1
+```bash
+ros2 launch wind_turbine_express_pkg wte.launch.py 
+```
+In cmd #2
+```bash
+ros2 run wind_turbine_express_pkg wte_aquabot.py
+```
+In cmd #3
+```bash
+ros2 run wind_turbine_express_pkg thruster_driver.py
 ```
