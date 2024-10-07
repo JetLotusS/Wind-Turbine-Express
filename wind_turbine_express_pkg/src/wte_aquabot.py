@@ -9,6 +9,7 @@ from sensor_msgs.msg import NavSatFix
 from sensor_msgs.msg import Imu
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
+from wind_turbine_express_interfaces.msg import Thruster
 
 class WTEAquabotNode(Node):
 
@@ -20,19 +21,19 @@ class WTEAquabotNode(Node):
         self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10, callback_group=self.reentrant_group)
         self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10, callback_group=self.reentrant_group)
         self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10, callback_group=self.reentrant_group)
-
-        self.left_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/thrust', 5)
-        self.right_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/thrust', 5)
-        self.left_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/pos', 5)
-        self.right_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/pos', 5)
         
+        self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5)
+
         # Create a timer that will call the timer_callback function every 500ms
         timer_period = 0.5  # seconds
-        self.timer = self.create_timer(timer_period, self.thruster_callback, callback_group=self.reentrant_group)
+        self.timer = self.create_timer(timer_period, self.navigation_callback, callback_group=self.reentrant_group)
 
         self.origine_latitude = 48.04630
         self.origine_longitude = -4.97632
-        
+
+        self.obstacles_coordinates = [(-44, 222), (-94, 176), (98, 146), (-154, -3), (118, -48), (-45, -95), (10, -97), (-35, -150)]
+        self.wt_coordinates_index = 0
+        self.wind_turbines_coordinates = []
         self.get_logger().info('Aquabot node started !')
 
 
@@ -82,14 +83,18 @@ class WTEAquabotNode(Node):
         R = 6366354 # earth radius at latitude 48.04630
         C = 40075017 # earth meridional circumference
 
-        a = lat1 - lat2 # angle between the two latitudes in deg
-        b = long1 - long2 # angle between the two longitudes in deg
+        long_angle = long1 - long2 # angle between the two longitudes in deg
+        lat_angle = lat1 - lat2 # angle between the two latitudes in deg
 
-        x = (a/360)*C # distance between the two latitudes in m
-        y = (b/360)*(4*np.pi*R)/3 # distance between the two longitudes in m
+        x = (long_angle/360)*C # distance between the two latitudes in m
+        y = (lat_angle/360)*(4*np.pi*R)/3 # distance between the two longitudes in m
 
         return x,y
 
+    def xy_distance(self, x1, y1, x2, y2):
+
+        distance = np.sqrt((x1 - y1)**2 + (x2 - y2)**2)
+        return distance
 
     def gps_callback(self, msg):
 
@@ -97,7 +102,7 @@ class WTEAquabotNode(Node):
         self.aquabot_y = msg.longitude - self.origine_longitude
 
         aquabot_center_distance = self.distance_from_point(msg.latitude, msg.longitude, self.origine_latitude, self.origine_longitude)
-        aquabot_coordinate = self.coordinates_from_point(msg.latitude, msg.longitude, self.origine_latitude, self.origine_longitude)
+        self.aquabot_coordinate = self.coordinates_from_point(msg.latitude, msg.longitude, self.origine_latitude, self.origine_longitude)
         
 
     def ais_callback(self, msg):
@@ -115,6 +120,7 @@ class WTEAquabotNode(Node):
         eolienne_2_coordinate = self.coordinates_from_point(self.eolienne_2_latitude, self.eolienne_2_longitude, self.origine_latitude, self.origine_longitude)
         eolienne_3_coordinate = self.coordinates_from_point(self.eolienne_3_latitude, self.eolienne_3_longitude, self.origine_latitude, self.origine_longitude)
         
+        self.wind_turbines_coordinates = [eolienne_1_coordinate, eolienne_2_coordinate, eolienne_3_coordinate]
 
     def imu_callback(self, msg):
         
@@ -127,36 +133,24 @@ class WTEAquabotNode(Node):
 
         #self.get_logger().info(f"yaw: {self.yaw}")
 
+    def navigation_callback(self):
 
-    def thruster_callback(self):
+        '''
+        ------------------------------- /!\ En developpement /!\ -------------------------------
+        '''
+                
+        thruster_msg = Thruster()
+
+        if len(self.wind_turbines_coordinates) > 0 and self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], self.wind_turbines_coordinates[self.wt_coordinates_index][0], self.wind_turbines_coordinates[self.wt_coordinates_index][1]) > 5.0:
+            thruster_msg.x = self.wind_turbines_coordinates[self.wt_coordinates_index][0]
+            thruster_msg.y = self.wind_turbines_coordinates[self.wt_coordinates_index][1]
+            self.thruster_pub.publish(thruster_msg)
+        elif len(self.wind_turbines_coordinates) > 0:
+            self.wt_coordinates_index += 1
+        else:
+            return
+  
         
-        left_turn = 0.0
-        right_turn = 0.0
-
-        left_speed = 0.0
-        right_speed = 0.0
-
-        #self.get_logger().info('Publishing: "%s"' % left_speed_msg.data)
-        #self.get_logger().info('Publishing: "%s"' % right_speed_msg.data)
-        #self.get_logger().info('Publishing: "%s"' % left_turn_msg.data)
-        #self.get_logger().info('Publishing: "%s"' % right_turn_msg.data)
-
-        left_speed_msg = Float64()
-        left_turn_msg = Float64()
-        left_speed_msg.data = left_speed
-        left_turn_msg.data = left_turn
-
-        right_speed_msg = Float64()
-        right_turn_msg = Float64()
-        right_speed_msg.data = right_speed
-        right_turn_msg.data = right_turn
-            
-        self.left_speed_pub.publish(left_speed_msg)
-        self.right_speed_pub.publish(right_speed_msg)
-        self.left_turn_pub.publish(left_turn_msg)
-        self.right_turn_pub.publish(right_turn_msg)
-
-
 def main(args=None):
     rclpy.init(args=args)
     wte_aquabot_node = WTEAquabotNode()

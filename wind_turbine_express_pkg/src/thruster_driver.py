@@ -6,6 +6,7 @@ from rclpy.node import Node
 
 from std_msgs.msg import Float64
 from sensor_msgs.msg import Imu
+from wind_turbine_express_interfaces.msg import Thruster
 
 class ThrusterNode(Node):
 
@@ -13,6 +14,7 @@ class ThrusterNode(Node):
         super().__init__('thruster_node')
         
         self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10)
+        self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10)
 
         self.left_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/thrust', 5)
         self.right_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/thrust', 5)
@@ -21,9 +23,22 @@ class ThrusterNode(Node):
         
         # Create a timer that will call the timer_callback function every 500ms
         timer_period = 0.5  # seconds
-        self.timer = self.create_timer(timer_period, self.thruster_callback)
+        self.timer = self.create_timer(timer_period, self.driver_callback)
 
         # Declare variables
+        self.thruster_speed = 0.0
+
+        self.left_turn = 0.0
+        self.right_turn = 0.0
+
+        self.left_speed = 0.0
+        self.right_speed = 0.0
+
+        self.x_goal_pose = 0.0
+        self.y_goal_pose = 0.0
+        self.yaw_goal_pose = 0.0
+        self.thruster_goal_speed = 0.0
+
 
     def euler_from_quaternion(self, quaternion):
         """
@@ -54,35 +69,57 @@ class ThrusterNode(Node):
         self.yaw = self.euler_from_quaternion(quaternion)
 
         self.angular_vel_z = msg.angular_velocity.z
-        self.linear_vel_x = msg.linear_acceleration.x
-        self.linear_vel_y = msg.linear_acceleration.y
+        self.linear_accel_x = msg.linear_acceleration.x
+        self.linear_accel_y = msg.linear_acceleration.y
 
-        self.get_logger().info(f"yaw: {self.yaw}")
+        #self.get_logger().info(f"yaw: {self.yaw}")
 
-
-    def thruster_callback(self):
+    def thruster_callback(self, msg):
         
-        left_turn = 0.0
-        right_turn = 0.0
+        self.x_goal_pose = msg.x
+        self.y_goal_pose = msg.y
+        self.yaw_goal_pose = msg.theta
+        self.thruster_goal_speed = msg.speed
+        self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
+        self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, thruster_goal_speed: {self.thruster_goal_speed}")
 
-        left_speed = 0.0
-        right_speed = 0.0
 
+    def driver_callback(self):
+        
+        '''
+        ------------------------------- /!\ En developpement /!\ -------------------------------
+        '''
+
+        if self.thruster_speed < self.thruster_goal_speed:
+            self.thruster_speed += self.thruster_goal_speed*50
+        else:
+            self.thruster_speed = 0.0
+
+        if self.yaw > self.yaw_goal_pose:
+            self.left_turn -= 0.2 
+            self.right_turn -= 0.2
+        else:
+            self.left_turn += 0.2 
+            self.right_turn += 0.2
+
+        self.left_speed = self.thruster_speed
+        self.right_speed = self.thruster_speed
+
+        left_speed_msg = Float64()
+        left_turn_msg = Float64()
+        left_speed_msg.data = self.left_speed
+        left_turn_msg.data = self.left_turn
+
+        right_speed_msg = Float64()
+        right_turn_msg = Float64()
+        right_speed_msg.data = self.right_speed
+        right_turn_msg.data = self.right_turn
+        
         #self.get_logger().info('Publishing: "%s"' % left_speed_msg.data)
         #self.get_logger().info('Publishing: "%s"' % right_speed_msg.data)
         #self.get_logger().info('Publishing: "%s"' % left_turn_msg.data)
         #self.get_logger().info('Publishing: "%s"' % right_turn_msg.data)
 
-        left_speed_msg = Float64()
-        left_turn_msg = Float64()
-        left_speed_msg.data = left_speed
-        left_turn_msg.data = left_turn
-
-        right_speed_msg = Float64()
-        right_turn_msg = Float64()
-        right_speed_msg.data = right_speed
-        right_turn_msg.data = right_turn
-            
         self.left_speed_pub.publish(left_speed_msg)
         self.right_speed_pub.publish(right_speed_msg)
         self.left_turn_pub.publish(left_turn_msg)

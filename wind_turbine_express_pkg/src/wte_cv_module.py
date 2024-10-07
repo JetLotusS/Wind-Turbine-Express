@@ -25,14 +25,23 @@ class OpenCvDecoder(Node):
         self.qr_decoder = cv2.QRCodeDetector()
 
     def image_callback(self, msg):
+
         # Convert ROS Image message to OpenCV image
         current_frame = self.br.imgmsg_to_cv2(msg)
+        #self.get_logger().info(f"Image shape: {current_frame.shape}, dtype: {current_frame.dtype}")
 
+        if current_frame is None:
+            self.get_logger().error("The input image is empty")
+            return
+        
         # Decode image
         data,bbox,rectifiedImage = self.qr_decoder.detectAndDecode(current_frame)
 
         if len(data) > 0:
+            report_msg = String()
+            report_msg.data = data
             self.get_logger().info('Decoded data: ' + data)
+            self.windturbines_report_publisher.publish(report_msg)
         else:
             self.get_logger().info('No QR code detected')
 

@@ -43,8 +43,8 @@ class LocalisationNode(Node):
         R = 6366354 # earth radius at latitude 48.04630
         C = 40075017 # earth meridional circumference
 
-        a = lat1 - lat2 # angle between the two latitudes in deg
-        b = long1 - long2 # angle between the two longitudes in deg
+        b = lat1 - lat2 # angle between the two latitudes in deg
+        a = long1 - long2 # angle between the two longitudes in deg
 
         x = (a/360)*C # distance between the two latitudes in m
         y = (b/360)*(4*np.pi*R)/3 # distance between the two longitudes in m
