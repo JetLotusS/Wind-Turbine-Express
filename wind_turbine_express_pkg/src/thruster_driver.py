@@ -24,7 +24,7 @@ class ThrusterNode(Node):
         # Create a timer that will call the timer_callback function every 500ms
         timer_period = 0.5  # seconds
         self.timer = self.create_timer(timer_period, self.driver_callback)
-
+        
         # Declare variables
         self.thruster_speed = 0.0
 
@@ -90,17 +90,25 @@ class ThrusterNode(Node):
         ------------------------------- /!\ En developpement /!\ -------------------------------
         '''
 
+        turn_limit = 0.78539816339
+        speed_limit = 5000.0
+
         if self.thruster_speed < self.thruster_goal_speed:
-            self.thruster_speed += self.thruster_goal_speed*50
+            self.thruster_speed += min(speed_limit, self.thruster_speed + speed_limit * 0.02)
         else:
             self.thruster_speed = 0.0
 
-        if self.yaw > self.yaw_goal_pose:
-            self.left_turn -= 0.2 
-            self.right_turn -= 0.2
+        if self.yaw - self.yaw_goal_pose > 0.1:
+            self.left_turn = min(turn_limit, self.left_turn + turn_limit * 0.01)
+            self.right_turn = min(turn_limit, self.left_turn + turn_limit * 0.01)
+
+        elif self.yaw - self.yaw_goal_pose < -0.1:
+            self.left_turn = max(-turn_limit, self.left_turn - turn_limit * 0.01)
+            self.right_turn = max(-turn_limit, self.left_turn - turn_limit * 0.01)
+
         else:
-            self.left_turn += 0.2 
-            self.right_turn += 0.2
+            self.left_turn = 0.0
+            self.right_turn = 0.0
 
         self.left_speed = self.thruster_speed
         self.right_speed = self.thruster_speed

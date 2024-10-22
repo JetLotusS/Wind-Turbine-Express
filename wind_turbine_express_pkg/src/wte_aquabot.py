@@ -86,14 +86,14 @@ class WTEAquabotNode(Node):
         long_angle = long1 - long2 # angle between the two longitudes in deg
         lat_angle = lat1 - lat2 # angle between the two latitudes in deg
 
-        x = (long_angle/360)*C # distance between the two latitudes in m
-        y = (lat_angle/360)*(4*np.pi*R)/3 # distance between the two longitudes in m
+        x = (long_angle/360)*C*(2/3) # distance between the two latitudes in m
+        y = (lat_angle/360)*(2*np.pi*R) # distance between the two longitudes in m
 
         return x,y
 
     def xy_distance(self, x1, y1, x2, y2):
 
-        distance = np.sqrt((x1 - y1)**2 + (x2 - y2)**2)
+        distance = np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
         return distance
 
     def gps_callback(self, msg):
@@ -116,11 +116,12 @@ class WTEAquabotNode(Node):
         self.eolienne_3_latitude = msg.poses[2].position.x
         self.eolienne_3_longitude = msg.poses[2].position.y
         
-        eolienne_1_coordinate = self.coordinates_from_point(self.eolienne_1_latitude, self.eolienne_1_longitude, self.origine_latitude, self.origine_longitude)
-        eolienne_2_coordinate = self.coordinates_from_point(self.eolienne_2_latitude, self.eolienne_2_longitude, self.origine_latitude, self.origine_longitude)
-        eolienne_3_coordinate = self.coordinates_from_point(self.eolienne_3_latitude, self.eolienne_3_longitude, self.origine_latitude, self.origine_longitude)
+        eolienne_A_coordinate = self.coordinates_from_point(self.eolienne_1_latitude, self.eolienne_1_longitude, self.origine_latitude, self.origine_longitude)
+        eolienne_B_coordinate = self.coordinates_from_point(self.eolienne_2_latitude, self.eolienne_2_longitude, self.origine_latitude, self.origine_longitude)
+        eolienne_C_coordinate = self.coordinates_from_point(self.eolienne_3_latitude, self.eolienne_3_longitude, self.origine_latitude, self.origine_longitude)
         
-        self.wind_turbines_coordinates = [eolienne_1_coordinate, eolienne_2_coordinate, eolienne_3_coordinate]
+        self.wind_turbines_coordinates = [eolienne_A_coordinate, eolienne_B_coordinate, eolienne_C_coordinate]
+        self.get_logger().info(f"{self.wind_turbines_coordinates}")
 
     def imu_callback(self, msg):
         
@@ -131,7 +132,7 @@ class WTEAquabotNode(Node):
         self.linear_vel_x = msg.linear_acceleration.x
         self.linear_vel_y = msg.linear_acceleration.y
 
-        #self.get_logger().info(f"yaw: {self.yaw}")
+        self.get_logger().info(f"yaw: {self.yaw}")
 
     def navigation_callback(self):
 
@@ -140,14 +141,32 @@ class WTEAquabotNode(Node):
         '''
                 
         thruster_msg = Thruster()
+        
+        if not self.wind_turbines_coordinates:
+            self.get_logger().warning("Wind turbine coordinates not available yet!")
+            return
+        
+        wind_turbine_to_aquabot_distance = self.xy_distance(self.wind_turbines_coordinates[0][0], self.wind_turbines_coordinates[0][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
 
-        if len(self.wind_turbines_coordinates) > 0 and self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], self.wind_turbines_coordinates[self.wt_coordinates_index][0], self.wind_turbines_coordinates[self.wt_coordinates_index][1]) > 5.0:
+        if wind_turbine_to_aquabot_distance > 10.0:
+            
             thruster_msg.x = self.wind_turbines_coordinates[self.wt_coordinates_index][0]
             thruster_msg.y = self.wind_turbines_coordinates[self.wt_coordinates_index][1]
+            thruster_msg.speed = 3000.0
+
+            thruster_msg.theta = np.arccos((self.wind_turbines_coordinates[self.wt_coordinates_index][0] - self.aquabot_coordinate[0])/wind_turbine_to_aquabot_distance)
+
+            self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
+            self.get_logger().info(f"wt_x: {self.wind_turbines_coordinates[self.wt_coordinates_index][0]}, wt_y: {self.wind_turbines_coordinates[self.wt_coordinates_index][1]}")
+            self.get_logger().info(f"wt_a_xd: {self.wind_turbines_coordinates[self.wt_coordinates_index][0] - self.aquabot_coordinate[0]}, wt_a_d: {wind_turbine_to_aquabot_distance}")
+            
+            if self.wind_turbines_coordinates[self.wt_coordinates_index][1] < self.aquabot_coordinate[1]:
+                thruster_msg.theta = -thruster_msg.theta
+
             self.thruster_pub.publish(thruster_msg)
-        elif len(self.wind_turbines_coordinates) > 0:
-            self.wt_coordinates_index += 1
+
         else:
+            self.get_logger().info(f"Point has been reached !")
             return
   
         

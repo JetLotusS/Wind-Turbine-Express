@@ -10,7 +10,7 @@ from cv_bridge import CvBridge
 class OpenCvDecoder(Node):
 
     def __init__(self):
-        super().__init__('opencv_decoder_node')
+        super().__init__('wte_cv_node')
 
         # Create a subscriber on the topic "image_raw"
         self.subscriber = self.create_subscription(Image, '/aquabot/sensors/cameras/main_camera_sensor/image_raw', self.image_callback, 10)
