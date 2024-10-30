@@ -10,7 +10,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     ld = LaunchDescription()
 
-    default_world_name = 'aquabot_windturbines_easy'
+    default_world_name = 'aquabot_windturbines_medium'
     #aquabot_regatta
     #aquabot_windturbines_easy
     #aquabot_windturbines_medium
