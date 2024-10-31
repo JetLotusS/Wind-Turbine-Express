@@ -100,9 +100,8 @@ class WTENavigationNode(Node):
         self.i_objectif = 0
         self.i_proche_next = -1
         self.i_eolienne = -1
-        self.i_next = -1
+        self.next_indice_around_windturbine = -1
         self.plus_proche_next_atteint = False
-        self.next_pos = (-9999,-9999) # Peut etre adelete
         self.get_logger().info("End of initialisationt")
 
 
@@ -179,18 +178,26 @@ class WTENavigationNode(Node):
     def get_next_move(self):
         
         self.get_logger().info("Behavior : " + str(self.behavior))
-
-
         self.update_behavior()
         if self.behavior == self.GO_NEXT_WINDTURBINE:
             # ON VA VERS LA PROCHAINE EOLIENNE
-            if self.i_eolienne != -1 and self.dist(self.pos,self.next_pos) < 15:
+            if self.i_eolienne != -1:
+                next_pos = self.coordonnees_eoliennes[self.i_eolienne]
+            elif len(self.liste_chemin_en_cours) > 0:
+                next_pos = self.liste_chemin_en_cours[0]
+            else:
+                if self.i_eolienne >= 0 and self.i_eolienne < len(self.coordonnees_eoliennes):
+                    next_pos = self.coordonnees_eoliennes[self.ordre_visite[self.i_eolienne]]
+                else:
+                    next_pos = (self.origine_longitude,self.origine_latitude)
+
+            if self.i_eolienne != -1 and self.dist(self.pos,self.coordonnees_eoliennes[self.i_eolienne]) < 15:
                 #EOLIENNE ATTEINTE ! 
                 
                 self.behavior = self.ROUND_AROUND_WINDTURBINE
                 #INITIALISATION PARCOURS EOLIENNE
 
-                self.i_next = (self.i_eolienne + 1) if self.i_eolienne < 2 else -1
+                self.next_indice_around_windturbine = (self.i_eolienne + 1) if self.i_eolienne < 2 else -1
 
                 self.l_sommet = self.calcul_exploration_eolienne(self.i_eolienne,self.pos)
                 self.g_eolienne = self.l_graphe_eolienne[self.i_eolienne]
@@ -199,30 +206,32 @@ class WTENavigationNode(Node):
                 self.i_objectif = 0
                 self.i_proche_next = -1
 
-                if self.i_next != -1:
-                    self.indice_point_eolienne_next = self.indice_plus_proche(self.l_graphe_eolienne[self.i_next][0], self.pos)
-                    self.i_proche_next = self.indice_plus_proche(self.g_eolienne[0],self.l_graphe_eolienne[self.i_next][0][self.indice_point_eolienne_next])
+                if self.next_indice_around_windturbine != -1:
+                    self.indice_point_eolienne_next = self.indice_plus_proche(self.l_graphe_eolienne[self.next_indice_around_windturbine][0], self.pos)
+                    self.i_proche_next = self.indice_plus_proche(self.g_eolienne[0],self.l_graphe_eolienne[self.next_indice_around_windturbine][0][self.indice_point_eolienne_next])
 
 
                 #APPEL RECURSIF DE NEXT_MOVE
                 return self.get_next_move()
             
-            elif self.dist(self.pos,self.next_pos) < 1:
+
+            elif self.dist(self.pos,next_pos) < 5:
                 # On a atteint le prochain poin de passage 
                 self.point_atteint(self.pos)
                 return self.get_next_move()
             
             else:
                 # On se dirige vers l'éolienne
-                v_pn = self.add_vect(self.next_pos, self.mul_vect(self.pos, -1))
+                v_pn = self.add_vect(next_pos, self.mul_vect(self.pos, -1))
                 n_v = self.norme_vecteur(v_pn) #Norme vecteur >=1
                 v_pn = self.mul_vect(v_pn, 1 / n_v)
                 v_pn = self.mul_vect(v_pn,10)
-                self.next_pos = p_next
-                if self.dist(self.next_pos,self.pos) < 10: # N'arrive jamais ?
-                    return self.next_pos
+                next_pos = self.add_vect(self.pos,v_pn)
+
+                if self.dist(next_pos,self.pos) < 10: # N'arrive jamais ?
+                    return next_pos
                 else:
-                    return self.next_pos
+                    return next_pos
                     #return self.add_vect(self.pos,v_pn)
 
         elif self.behavior == self.ROUND_AROUND_WINDTURBINE:
