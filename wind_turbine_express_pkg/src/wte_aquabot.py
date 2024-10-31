@@ -10,6 +10,7 @@ from sensor_msgs.msg import Imu
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from wind_turbine_express_interfaces.msg import Thruster
+from ros_gz_interfaces.msg import ParamVec
 
 class WTEAquabotNode(Node):
 
@@ -22,7 +23,8 @@ class WTEAquabotNode(Node):
         self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10, callback_group=self.reentrant_group)
         self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10, callback_group=self.reentrant_group)
         self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/navigation/point', self.get_point_callback, 10, callback_group=self.reentrant_group)
-
+        self.task_info_subscriber = self.create_subscription(ParamVec, '/vrx/task/info', self.task_info_callback, 10, callback_group=self.reentrant_group)
+        
         self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5)
 
         # Create a timer that will call the timer_callback function every 500ms
@@ -52,6 +54,11 @@ class WTEAquabotNode(Node):
 
         self.get_logger().info('Aquabot node started !')
 
+    def task_info_callback(self, msg):
+        
+        for param in msg.params:
+            if param.name == "name":
+                self.current_task = param.value.string_value
 
     def euler_from_quaternion(self, quaternion):
 
@@ -139,6 +146,7 @@ class WTEAquabotNode(Node):
         self.wind_turbines_coordinates = [eolienne_A_coordinate, eolienne_B_coordinate, eolienne_C_coordinate]
         self.get_logger().info(f"{self.wind_turbines_coordinates}")
 
+
     def imu_callback(self, msg):
         
         quaternion = [msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w]
@@ -149,6 +157,7 @@ class WTEAquabotNode(Node):
         self.linear_vel_y = msg.linear_acceleration.y
 
         #self.get_logger().info(f"yaw: {self.yaw}")
+
 
     def get_point_callback(self, msg):
         
@@ -195,14 +204,14 @@ class WTEAquabotNode(Node):
             #thruster_msg.speed = min(thruster_max_speed, np.abs(thruster_msg.speed))
             self.speed_controller_previous_error = speed_controller_error
 
-            self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
-            self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
-            self.get_logger().info(f"p_a_xd: {point_x - self.aquabot_coordinate[0]}, p_a_yd: {goal_point_to_aquabot_distance}")
+            #self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
+            #self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
+            #self.get_logger().info(f"p_a_xd: {point_x - self.aquabot_coordinate[0]}, p_a_yd: {goal_point_to_aquabot_distance}")
             
             #calculate the angle between the boat yaw and the objective
             thruster_msg.theta = np.arccos((point_x - self.aquabot_coordinate[0])/goal_point_to_aquabot_distance)
 
-            self.get_logger().info(f"thruster_msg.theta: {thruster_msg.theta}")
+            #self.get_logger().info(f"thruster_msg.theta: {thruster_msg.theta}")
 
             if point_y < self.aquabot_coordinate[1]:
                 thruster_msg.theta = -thruster_msg.theta

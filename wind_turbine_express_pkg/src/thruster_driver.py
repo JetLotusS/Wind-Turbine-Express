@@ -9,6 +9,7 @@ from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Float64
 from sensor_msgs.msg import Imu
 from wind_turbine_express_interfaces.msg import Thruster
+from rcl_interfaces.msg import SetParametersResult
 
 class ThrusterNode(Node):
 
@@ -24,11 +25,17 @@ class ThrusterNode(Node):
         self.right_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/thrust', 5)
         self.left_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/pos', 5)
         self.right_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/pos', 5)
-        
+
+        # Create a publisher for camera control
+        self.cam_thruster_pub = self.create_publisher(Float64, '/aquabot/thrusters/main_camera_sensor/pos', 5)
+
         # Create a timer that will call the timer_callback function every 500ms
         self.timer_period = 0.2  # seconds
         self.timer = self.create_timer(self.timer_period, self.driver_callback)
         
+        # Add a callback for parameter changes
+        self.add_on_set_parameters_callback(self.parameter_callback)
+
         # Daclare Aquabot variables
         self.aquabot_coordinate = []
         
@@ -51,14 +58,34 @@ class ThrusterNode(Node):
         self.origine_longitude = -4.97632
 
         # Direction PID Controller variables
-        self.direction_controller_k_p = 0.025
-        self.direction_controller_k_i = 0.0
-        self.direction_controller_k_d = 0.0
+
+        self.declare_parameter('kp', 0.025)
+        self.declare_parameter('ki', 0.0)
+        self.declare_parameter('kd', 0.0)
+
+        self.direction_controller_k_p = self.get_parameter('kp').get_parameter_value().double_value
+        self.direction_controller_k_i = self.get_parameter('ki').get_parameter_value().double_value
+        self.direction_controller_k_d = self.get_parameter('kd').get_parameter_value().double_value
+
         self.direction_controller_previous_error = 0.0
         self.direction_controller_integral = 0.0
         self.thruster_turn_angle = 0.0
 
         self.get_logger().info('Thruster driver node started !')
+
+    def parameter_callback(self, params):
+        successful = True
+        for param in params:
+            if param.name == 'kp':
+                self.direction_controller_k_p = param.value
+            elif param.name == 'ki':
+                self.direction_controller_k_i = param.value
+            elif param.name == 'kd':
+                self.direction_controller_k_d = param.value
+            else:
+                successful = False  # Unknown parameter
+
+        return SetParametersResult(successful=successful)
 
 
     def euler_from_quaternion(self, quaternion):
@@ -174,8 +201,8 @@ class ThrusterNode(Node):
             self.get_logger().warning("yaw_goal_pose nan")
             return
         
-        self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
-        self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, self.yaw: {self.yaw}")
+        #self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
+        #self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, self.yaw: {self.yaw}")
 
         turn_limit = 0.78539816339
         speed_limit = 5000.0
@@ -185,10 +212,8 @@ class ThrusterNode(Node):
 
         if np.abs(direction_controller_error) > np.pi:
             if direction_controller_error > 0:
-                self.get_logger().info(f"1")
                 direction_controller_error -= 2*np.pi
             else:
-                self.get_logger().info(f"2")
                 direction_controller_error += 2*np.pi
 
         self.direction_controller_integral += direction_controller_error*self.timer_period
@@ -201,10 +226,6 @@ class ThrusterNode(Node):
         self.get_logger().info(f"direction_controller_integral: {self.direction_controller_integral}")
         #self.get_logger().info(f"direction_controller_derivative: {direction_controller_derivative}")
 
-        #if self.thruster_turn_angle < 0:
-        #    self.thruster_turn_angle = max(turn_limit, self.thruster_turn_angle)
-        #else:
-        #    self.thruster_turn_angle = min(turn_limit, self.thruster_turn_angle)
 
         self.direction_controller_previous_error = direction_controller_error
 
