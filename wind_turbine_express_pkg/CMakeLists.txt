@@ -34,6 +34,7 @@ install(
     src/wte_localisation.py
     src/wte_aquabot.py
     src/wte_cv_module.py
+    src/wte_planner.py
   DESTINATION 
     lib/${PROJECT_NAME}
 )
@@ -42,6 +43,8 @@ install(
   DIRECTORY
     launch
     config
+    images
+    assets
   DESTINATION
     share/${PROJECT_NAME}/
 )

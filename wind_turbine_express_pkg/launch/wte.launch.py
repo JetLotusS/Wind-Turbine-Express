@@ -41,7 +41,7 @@ def generate_launch_description():
 
     ld.add_action(world_arg)
     ld.add_action(aquabot_competition_launch_file)
-    #ld.add_action(navigation_node)
-    #ld.add_action(thruster_driver_node)
+    ld.add_action(navigation_node)
+    ld.add_action(thruster_driver_node)
 
     return ld

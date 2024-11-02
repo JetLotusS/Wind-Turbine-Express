@@ -29,7 +29,7 @@ class ThrusterNode(Node):
         # Create a publisher for camera control
         self.cam_thruster_pub = self.create_publisher(Float64, '/aquabot/thrusters/main_camera_sensor/pos', 5)
 
-        # Create a timer that will call the timer_callback function every 500ms
+        # Create a timer that will call the timer_callback function every 200ms
         self.timer_period = 0.2  # seconds
         self.timer = self.create_timer(self.timer_period, self.driver_callback)
         
@@ -41,6 +41,7 @@ class ThrusterNode(Node):
         
         # Declare thruster variables
         self.thruster_speed = 0.0
+        self.yaw = Float64()
 
         self.left_turn = 0.0
         self.right_turn = 0.0
@@ -221,9 +222,9 @@ class ThrusterNode(Node):
         
         self.thruster_turn_angle = self.direction_controller_k_p*direction_controller_error + self.direction_controller_k_i*self.direction_controller_integral + self.direction_controller_k_d*direction_controller_derivative
 
-        self.get_logger().info(f"thruster_turn_angle: {self.thruster_turn_angle}")
-        self.get_logger().info(f"direction_controller_error: {direction_controller_error}")
-        self.get_logger().info(f"direction_controller_integral: {self.direction_controller_integral}")
+        #self.get_logger().info(f"thruster_turn_angle: {self.thruster_turn_angle}")
+        #self.get_logger().info(f"direction_controller_error: {direction_controller_error}")
+        #self.get_logger().info(f"direction_controller_integral: {self.direction_controller_integral}")
         #self.get_logger().info(f"direction_controller_derivative: {direction_controller_derivative}")
 
 
@@ -233,7 +234,10 @@ class ThrusterNode(Node):
         #self.get_logger().info(f"self.thruster_speed: {self.thruster_speed}")
 
         self.thruster_speed = min(speed_limit, np.abs(self.thruster_goal_speed))
-        
+
+        cam_angle = Float64()
+        cam_angle.data = float(direction_controller_error)
+
         if self.thruster_goal_speed < 0:
             self.thruster_speed = - self.thruster_speed
 
@@ -259,6 +263,7 @@ class ThrusterNode(Node):
         self.left_turn_pub.publish(left_turn_msg)
         self.right_turn_pub.publish(right_turn_msg)
 
+        self.cam_thruster_pub.publish(cam_angle)
 
 def main(args=None):
     rclpy.init(args=args)
