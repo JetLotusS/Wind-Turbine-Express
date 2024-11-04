@@ -30,7 +30,7 @@ class ThrusterNode(Node):
         self.cam_thruster_pub = self.create_publisher(Float64, '/aquabot/thrusters/main_camera_sensor/pos', 5)
 
         # Create a timer that will call the timer_callback function every 200ms
-        self.timer_period = 0.2  # seconds
+        self.timer_period = 0.1  # seconds
         self.timer = self.create_timer(self.timer_period, self.driver_callback)
         
         # Add a callback for parameter changes
@@ -60,8 +60,8 @@ class ThrusterNode(Node):
 
         # Direction PID Controller variables
 
-        self.declare_parameter('kp', 0.075)
-        self.declare_parameter('ki', 0.0)
+        self.declare_parameter('kp', 0.1 )
+        self.declare_parameter('ki', 0.01)
         self.declare_parameter('kd', 0.0)
 
         self.direction_controller_k_p = self.get_parameter('kp').get_parameter_value().double_value

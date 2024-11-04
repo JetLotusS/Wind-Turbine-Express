@@ -29,7 +29,7 @@ class WTEAquabotNode(Node):
         self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5)
 
         # Create a timer that will call the timer_callback function every 200ms
-        self.timer_period = 0.2  # seconds
+        self.timer_period = 0.1  # seconds
         self.timer = self.create_timer(self.timer_period, self.navigation_callback, callback_group=self.reentrant_group)
 
         # Variables
@@ -52,7 +52,7 @@ class WTEAquabotNode(Node):
 
         #Speed PID Controller variables
         self.speed_controller_k_p = 0.05
-        self.speed_controller_k_i = 0.0
+        self.speed_controller_k_i = 0.001
         self.speed_controller_k_d = 0.0
         self.speed_controller_previous_error = 0.0
         self.speed_controller_integral = 0.0
