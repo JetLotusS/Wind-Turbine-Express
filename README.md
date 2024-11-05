@@ -39,3 +39,7 @@ In cmd #3
 ```bash
 ros2 run wind_turbine_express_pkg thruster_driver.py
 ```
+In cmd #4
+```bash
+ros2 run wind_turbine_express_pkg wte_navigation.py 
+```
