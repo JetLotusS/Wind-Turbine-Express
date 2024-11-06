@@ -236,7 +236,7 @@ class WTEAquabotNode(Node):
             #For theta = 0.0 (objective in front of the boat), speed = 5000 (= max_speed)
             #thruster_msg.speed = thruster_msg.speed/((1 + thruster_msg.theta)**2)
 
-            if self.wind_turbines_distance[0] < 20 or self.wind_turbines_distance[1] < 20 or self.wind_turbines_distance[2] < 20:
+            if self.wind_turbines_distance[0] < 25 or self.wind_turbines_distance[1] < 25 or self.wind_turbines_distance[2] < 25:
                 self.aquabot_close_to_wind_turbine = True
             else:
                 self.aquabot_close_to_wind_turbine = False

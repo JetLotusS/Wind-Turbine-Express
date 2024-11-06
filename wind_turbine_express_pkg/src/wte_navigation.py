@@ -83,7 +83,7 @@ class WTENavigationNode(Node):
 
         
         
-        self.distance_point_passage_eolienne = 20
+        self.distance_point_passage_eolienne = 25
         
         self.tolerance_target_dist = 15
         
@@ -230,7 +230,7 @@ class WTENavigationNode(Node):
         dec_x = x_carte - x
         dec_y = y_carte - y
 
-        if x_carte >= self.taille_carte_dist_transform[0] or y_carte >= self.taille_carte_dist_transform[1] or x_carte < 0 or y_carte < 0:
+        if x_carte >= self.taille_carte_dist_transform[0] - 1 or y_carte >= self.taille_carte_dist_transform[1] - 1 or x_carte < 0 or y_carte < 0:
             return 1
 
         px_entier = self.carte_pixel[x, y]
@@ -437,14 +437,16 @@ class WTENavigationNode(Node):
         """
         l_off = []
         d = self.distance_point_passage_eolienne
+        
         l_off.append((coord[0] + d,coord[1]))
-        l_off.append((coord[0] ,coord[1] + d))
-        l_off.append((coord[0], coord[1] - d))
-        l_off.append((coord[0] - d, coord[1]))
         l_off.append((coord[0] + d * math.sqrt(2) / 2, coord[1] + d * math.sqrt(2) / 2))
-        l_off.append((coord[0] + d * math.sqrt(2) / 2, coord[1] - d * math.sqrt(2) / 2))
+        l_off.append((coord[0] ,coord[1] + d))
         l_off.append((coord[0] - d * math.sqrt(2) / 2, coord[1] + d * math.sqrt(2) / 2))
+        l_off.append((coord[0] - d, coord[1]))
         l_off.append((coord[0] - d * math.sqrt(2) / 2, coord[1] - d * math.sqrt(2) / 2))
+        l_off.append((coord[0], coord[1] - d))
+        l_off.append((coord[0] + d * math.sqrt(2) / 2, coord[1] - d * math.sqrt(2) / 2))
+        
         return l_off
 
     def spawn_eolienne(self,G,pos_eolienne):
@@ -568,14 +570,14 @@ class WTENavigationNode(Node):
             i_actuel += 1
 
         if i_actuel == len(self.eolienne_vu):
-            self.get_logger().error("FINI")
+            self.get_logger().fatal("FINI")
             self.liste_chemin_en_cours.clear()
             return (0,0),-1
 
         i_eolienne = self.ordre_visite[i_actuel]
         #Position de l'objectif d'apres
         if i_actuel < 2:
-            pos_suivante = self.coordonnees_eoliennes[self.ordre_visite[i_actuel]]
+            pos_suivante = self.coordonnees_eoliennes[self.ordre_visite[(i_actuel + 1)]]
         else:
             pos_suivante = (0,0)
         #self.i_eolienne est l'indice de l'éolienne que dont l'on cherche a faire le tour.
@@ -592,9 +594,30 @@ class WTENavigationNode(Node):
             self.rocher_deja_atteint.clear()
             self.liste_chemin_en_cours.clear()
 
-            chemin_autour_eolienne_sans_indice = copy.deepcopy(self.calcul_exploration_eolienne(i_eolienne,self.pos_aquabot))
+            self.get_logger().info("CONSTRUCTION DU CHEMIN AUTOUR DE LEOLIENNE EN EXPLORATION")
+            
+            graphe_de_eolienne_cible = self.l_graphe_eolienne[i_eolienne]
 
+            #Chemin a parcourir pour faire le tour de léolienne.
+            chemin_autour_eolienne_sans_indice = copy.deepcopy(self.calcul_exploration_eolienne(i_eolienne,self.pos_aquabot,False))
+            
+            #On ajoute quelque points pour qu'il fasse bien le tour de l'éolienne.
             chemin_autour_eolienne_sans_indice = chemin_autour_eolienne_sans_indice + chemin_autour_eolienne_sans_indice[0:2]
+
+            # On ajoute des points pour qu'il s'écarte de l'éolienen lorsque il est le plus proche de l'autre
+
+            idx_dernier_du_chemin = chemin_autour_eolienne_sans_indice[-1]
+
+            idx_proche_eolienne_suivante = self.indice_plus_proche(graphe_de_eolienne_cible[0],pos_suivante)
+
+            l = self.suit_bord_graphe(graphe_de_eolienne_cible,idx_dernier_du_chemin,idx_proche_eolienne_suivante, chemin_autour_eolienne_sans_indice[-2])
+            self.get_logger().info(f"SUIT BORD GRAPHE : DEPART {idx_dernier_du_chemin}; NEXT {idx_proche_eolienne_suivante}; EVITE {chemin_autour_eolienne_sans_indice[-2]}")
+            #Il ajoute rien haha hoho
+
+            self.get_logger().info(f"ajoute par suit_bord_graphe : {l}")
+            self.get_logger().info(f"CHEMIN AUTOUR EOLIENNE : {chemin_autour_eolienne_sans_indice}")
+            for elt in l:
+                chemin_autour_eolienne_sans_indice.append(elt)
 
             self.l_chemin_en_cours_autour_eolienne = [(indice,self.i_eolienne) for indice in (chemin_autour_eolienne_sans_indice)]
             print(self.l_chemin_en_cours_autour_eolienne)
@@ -607,7 +630,7 @@ class WTENavigationNode(Node):
         d_caillou = self.get_distance_caillou()
 
         # trouver un rayon de surveillance das lequel on veut attraper tout les rochers
-        r = 0
+        r = 100
         if d_caillou < 125:
             r = 100 #Rayon autour duquel on regarde les caillous :3
 
@@ -627,7 +650,7 @@ class WTENavigationNode(Node):
         
 
         RANGE = r
-        vitesse_actuelle = RANGE * (255 - self.get_distance_caillou()) / 255
+        vitesse_actuelle = RANGE
 
         self.get_logger().info(f"Eolienne visée : ({self.coordonnees_eoliennes[i_eolienne][0]},{self.coordonnees_eoliennes[i_eolienne][1]})")
         #C'est le vecteur qui de l'aquabot à l'éolienne
@@ -658,7 +681,10 @@ class WTENavigationNode(Node):
             #on renvoie la posotion de leolienne en mode on fonce dessus
             graphe_position_autour_eolienne_cible = self.l_graphe_eolienne[i_eolienne][0]
             idx_plus_proche_autour_eolienne = self.indice_plus_proche(graphe_position_autour_eolienne_cible,self.aquabot_coordinate)
-            return graphe_position_autour_eolienne_cible[idx_plus_proche_autour_eolienne],i_eolienne
+            pos_point_plus_proche_autour_eolienne = graphe_position_autour_eolienne_cible[idx_plus_proche_autour_eolienne]
+            chemin_autour_eolienne = copy.deepcopy(self.calcul_exploration_eolienne(i_eolienne,self.pos_aquabot,True))
+            pos_du_premier_point = graphe_position_autour_eolienne_cible[chemin_autour_eolienne[0]]
+            return pos_du_premier_point,i_eolienne
 
 
         #on devrait retournet le poibt le plus proche du bateau qui permet d3 faiee ld tour decleoliennecet pas leonilenne directemeny
@@ -700,12 +726,37 @@ class WTENavigationNode(Node):
                 i_proche = i
         return i_proche
     
-    def calcul_exploration_eolienne(self, i_eolienne,pos_bateau):
+    def calcul_exploration_eolienne(self, i_eolienne,pos_bateau,saute_point):
         g_eolienne = self.l_graphe_eolienne[i_eolienne]
+        n_point = len(g_eolienne)
         point_proche = self.indice_plus_proche(g_eolienne[0],pos_bateau)
-        l_sommet = self.composante_connexe(g_eolienne,point_proche)
+        if saute_point:
+            l_sommet = self.suit_bord_graphe(g_eolienne,(point_proche + 2) % n_point, (point_proche + 1) % n_point, (point_proche + 1) % n_point)
+        else:
+            l_sommet = self.suit_bord_graphe(g_eolienne,point_proche, (point_proche - 1) % n_point, (point_proche - 1) % n_point)
         return l_sommet
 
+    def suit_bord_graphe(self,G,depart,arrivee,point_a_eviter):
+        V = G[0]
+        E = G[1]
+        point_a_regarder = [depart]
+        chemin = []
+        point_vu = [False] * len(V)
+        while len(point_a_regarder) != 0:
+            i_actuel = point_a_regarder.pop(0)
+            if i_actuel == arrivee:
+                break
+
+            if not point_vu[i_actuel]:
+                point_vu[i_actuel] = True
+                chemin.append(i_actuel)
+                
+                voisins_i_actuel = E[i_actuel]
+                for i_voisin in voisins_i_actuel:
+                    if i_actuel != depart or i_voisin != point_a_eviter:
+                        point_a_regarder.append(i_voisin)
+            
+        return chemin
 
 def main(args=None):
     rclpy.init(args=args)
