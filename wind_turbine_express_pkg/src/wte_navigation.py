@@ -616,7 +616,7 @@ class WTENavigationNode(Node):
             while i != idx_proche_eolienne_suivante:
                 l.append(i)
                 i = (i + 1) % n
-            # l = self.suit_bord_graphe(graphe_de_eolienne_cible,idx_dernier_du_chemin,idx_proche_eolienne_suivante, chemin_autour_eolienne_sans_indice[-2])
+            
             self.get_logger().info(f"SUIT BORD GRAPHE : DEPART {idx_dernier_du_chemin}; NEXT {idx_proche_eolienne_suivante}; EVITE {chemin_autour_eolienne_sans_indice[-2]}")
             #Il ajoute rien haha hoho
 
@@ -732,24 +732,19 @@ class WTENavigationNode(Node):
         n_point = len(g_eolienne)
         point_proche = self.indice_plus_proche(g_eolienne[0],pos_bateau)
         if saute_point:
-            l_sommet = self.suit_bord_graphe(g_eolienne,(point_proche + 2) % n_point, (point_proche + 1) % n_point, (point_proche + 1) % n_point)
+            l_sommet = self.suit_bord_graphe(g_eolienne,(point_proche + 2) % n_point)
         else:
-            l_sommet = self.suit_bord_graphe(g_eolienne,point_proche, (point_proche - 1) % n_point, (point_proche - 1) % n_point)
+            l_sommet = self.suit_bord_graphe(g_eolienne,point_proche)
         return l_sommet
 
-    def suit_bord_graphe(self,G,depart,arrivee,point_a_eviter):
+    def suit_bord_graphe(self,G,depart):
         V = G[0]
-        E = G[1]
-        point_a_regarder = [depart]
         chemin = []
         n = len(V)
         i = depart
-        decallage = 1
         
         for _ in range(n):
             chemin.append(i)
-            #if i == arrivee:
-                #break
             i = (i+1)%n
         
         return chemin
