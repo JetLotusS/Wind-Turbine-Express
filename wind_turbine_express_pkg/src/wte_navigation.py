@@ -610,7 +610,13 @@ class WTENavigationNode(Node):
 
             idx_proche_eolienne_suivante = self.indice_plus_proche(graphe_de_eolienne_cible[0],pos_suivante)
 
-            l = self.suit_bord_graphe(graphe_de_eolienne_cible,idx_dernier_du_chemin,idx_proche_eolienne_suivante, chemin_autour_eolienne_sans_indice[-2])
+            l = []
+            i = idx_dernier_du_chemin
+            n = len(graphe_de_eolienne_cible[0])
+            while i != idx_proche_eolienne_suivante:
+                l.append(i)
+                i = (i + 1) % n
+            # l = self.suit_bord_graphe(graphe_de_eolienne_cible,idx_dernier_du_chemin,idx_proche_eolienne_suivante, chemin_autour_eolienne_sans_indice[-2])
             self.get_logger().info(f"SUIT BORD GRAPHE : DEPART {idx_dernier_du_chemin}; NEXT {idx_proche_eolienne_suivante}; EVITE {chemin_autour_eolienne_sans_indice[-2]}")
             #Il ajoute rien haha hoho
 
@@ -676,20 +682,14 @@ class WTENavigationNode(Node):
                         points_qui_coupent.append(voisin)
 
         
+        graphe_position_autour_eolienne_cible = self.l_graphe_eolienne[i_eolienne][0]
+        chemin_autour_eolienne = copy.deepcopy(self.calcul_exploration_eolienne(i_eolienne,self.pos_aquabot,False))
+        pos_du_premier_point = graphe_position_autour_eolienne_cible[chemin_autour_eolienne[2]]
+
         # Si aucun rocher ne s'interposent continuer en mode on s'en fiche, c'est à dire que il n'y a aucun rocher qui se coupent
         if len(points_qui_coupent) == 0:
-            #on renvoie la posotion de leolienne en mode on fonce dessus
-            graphe_position_autour_eolienne_cible = self.l_graphe_eolienne[i_eolienne][0]
-            idx_plus_proche_autour_eolienne = self.indice_plus_proche(graphe_position_autour_eolienne_cible,self.aquabot_coordinate)
-            pos_point_plus_proche_autour_eolienne = graphe_position_autour_eolienne_cible[idx_plus_proche_autour_eolienne]
-            chemin_autour_eolienne = copy.deepcopy(self.calcul_exploration_eolienne(i_eolienne,self.pos_aquabot,True))
-            pos_du_premier_point = graphe_position_autour_eolienne_cible[chemin_autour_eolienne[0]]
             return pos_du_premier_point,i_eolienne
 
-
-        #on devrait retournet le poibt le plus proche du bateau qui permet d3 faiee ld tour decleoliennecet pas leonilenne directemeny
-
-        #FUN FACT atteint uniquement a partir de la fin de la deuxieme elioenne sur world medium
 
         # On trouve le point le plus proche des rochers trouvé
         coord_point_qui_coupent = [self.G[0][i] for i in points_qui_coupent]
@@ -702,7 +702,8 @@ class WTENavigationNode(Node):
         self.get_logger().info(f"Rocher connecté au caillou : {indice_rocher_connecte_au_caillou}")
         
         coord_connecte_au_caillou = [self.G[0][i] for i in indice_rocher_connecte_au_caillou]
-        indice_plus_proche_eolienne = self.indice_plus_proche(coord_connecte_au_caillou,eolinne_cible_pos)
+        # On met pos du premier poit a atteindre
+        indice_plus_proche_eolienne = self.indice_plus_proche(coord_connecte_au_caillou,pos_du_premier_point)
         # Au lieu de regarder les plus prochzs, il faut rrgarder lesquelles on peut passser pour contourner les rochers
 
         chemin_dindices_rocher_a_parcourir = self.trouver_chemin(self.G, indice_rocher_plus_proche_bateau, indice_rocher_connecte_au_caillou[indice_plus_proche_eolienne])
@@ -741,21 +742,16 @@ class WTENavigationNode(Node):
         E = G[1]
         point_a_regarder = [depart]
         chemin = []
-        point_vu = [False] * len(V)
-        while len(point_a_regarder) != 0:
-            i_actuel = point_a_regarder.pop(0)
-            if i_actuel == arrivee:
-                break
-
-            if not point_vu[i_actuel]:
-                point_vu[i_actuel] = True
-                chemin.append(i_actuel)
-                
-                voisins_i_actuel = E[i_actuel]
-                for i_voisin in voisins_i_actuel:
-                    if i_actuel != depart or i_voisin != point_a_eviter:
-                        point_a_regarder.append(i_voisin)
-            
+        n = len(V)
+        i = depart
+        decallage = 1
+        
+        for _ in range(n):
+            chemin.append(i)
+            #if i == arrivee:
+                #break
+            i = (i+1)%n
+        
         return chemin
 
 def main(args=None):
