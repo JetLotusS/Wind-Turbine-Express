@@ -66,7 +66,7 @@ class WTENavigationNode(Node):
         self.l_graphe_eolienne = [[],[]] #Mis a jour lors de ais callback
         self.eoliennes_data_initialisee = False
         self.i_eolienne = -1
-        d, self.ordre_visite = self.calcul_ordre_parcours_eolienne()
+        d, self.ordre_visite = 0,(0,1,2)
         self.eolienne_vu = [False, False, False]
 
         self.pos_aquabot = (0,0) # Mis a jour dans gps_callback
@@ -83,7 +83,7 @@ class WTENavigationNode(Node):
 
         
         
-        self.distance_point_passage_eolienne = 25
+        self.distance_point_passage_eolienne = 14
         
         self.tolerance_target_dist = 15
         
@@ -150,6 +150,7 @@ class WTENavigationNode(Node):
         if not self.eoliennes_data_initialisee: # On suppose que les coordonnées des éoliennes ne vont pas changer
             self.coordonnees_eoliennes = self.wind_turbines_coordinates.copy() # On met a jour les coordonnées des éoliennes
             self.l_graphe_eolienne = copy.deepcopy(self.genere_graphe_eolienne(self.coordonnees_eoliennes)) # On met a jour les graphes des éoliennes
+            d,self.ordre_visite = self.calcul_ordre_parcours_eolienne()
             self.eoliennes_data_initialisee = True
             self.get_logger().info("POS_EOLIENNE_INITIALISEE : ")
             print(self.l_graphe_eolienne)
@@ -403,34 +404,6 @@ class WTENavigationNode(Node):
         c.reverse()
         return c
     
-        """ def chemin_a_travers_graphe(self,G,pos_depart,pos_arrivee):
-        
-        
-        # Prend en argumen 2 position dans les coordonnées du monde 
-        # Renvoie la suite de sommet qui passe a travers le graphe en minimisant le nombre de sommet parcouru
-        # Le premier sommet du chemin renvoyé est le plus proche de pos_depart et le dernier sommet du chemin renvoyé est le plus proche de pos_arrivee
-        
-        i_depart = -1
-        d_depart = 999999
-        i_arrivee = -2
-        d_arrivee = 99999
-
-        n = len(G[0])
-        for i in range(n):
-            if self.dist(pos_depart, G[0][i]) < d_depart:
-                d_depart = self.dist(pos_depart, G[0][i])
-                i_depart = i
-
-            if self.dist(pos_arrivee, G[0][i]) < d_arrivee:
-                d_arrivee = self.dist(pos_arrivee, G[0][i])
-                i_arrivee = i
-
-        if i_depart == i_arrivee:
-            return []
-        else:
-            return self.trouver_chemin(G,i_depart,i_arrivee)
-        """
-    
     def coord_autour(self,coord):
         """
         Renvoie les coordonnées autour d'un point (utilisé lors de la création des graphes des éoliennes)
@@ -507,11 +480,34 @@ class WTENavigationNode(Node):
             l.append(graphe)
         return l
 
+    def calcul_cout_ordre(self,liste_ordre):
+        p0 = self.pos_aquabot
+        p1 = self.coordonnees_eoliennes[liste_ordre[0]]
+        d = 0
+        for i in range(len(liste_ordre)):
+            d += self.dist(p0,p1)
+            p0 = p1
+            if i != len(liste_ordre) - 1:
+                p1 = self.coordonnees_eoliennes[liste_ordre[i+1]]
+            else:
+                p1 = self.pos_aquabot
+
+        return d
+
     def calcul_ordre_parcours_eolienne(self):
         """
         Renvoie la liste des indice dans lesquel parcourir les éoliennes ainsi que la distance total (distance,ordre)
         """
-        return -1,(0,1,2)
+        ordre_possible = [(0,1,2),(0,2,1),(1,0,2),(1,2,0)]
+        cout_min = self.calcul_cout_ordre(ordre_possible[0])
+        meilleur_ordre = ordre_possible[0]
+        for ord in ordre_possible:
+            cout = self.calcul_cout_ordre(ord)
+            if cout < cout_min:
+                cout_min = cout
+                meilleur_ordre = ord
+
+        return cout_min,meilleur_ordre
     
     #AJOUTER UNE FINCTION QUI UNE FOIS LE QR CODE distance_point_passage_eolienne
     #Vide ke chemin eolienne pour aller vers la prochaine
@@ -544,16 +540,21 @@ class WTENavigationNode(Node):
         Renvoie la prochaine position à atteindre depuis la position self.pos_aquabot
         Prend en compte les éoliennes déjà atteinte
         """
-        if self.dist(self.pos_aquabot,self.coordonnees_eoliennes[self.i_eolienne]) < self.distance_point_passage_eolienne+self.tolerance_target_dist and len(self.l_chemin_en_cours_autour_eolienne) == 0:
+        #Si on est proche de l'eolienne qu'on veut atteindre, on y clear le chemin en cours pour aller au else
+        
+        if self.dist(self.pos_aquabot,self.coordonnees_eoliennes[self.i_eolienne]) < 1.6*self.distance_point_passage_eolienne+self.tolerance_target_dist and len(self.l_chemin_en_cours_autour_eolienne) == 0:
             self.liste_chemin_en_cours.clear()
+
+        #Si on est en train de faire le tour d'une eolienne, on continue
         if len(self.l_chemin_en_cours_autour_eolienne) >0:
             i_point, i_eolien = self.l_chemin_en_cours_autour_eolienne[0]
             return self.l_graphe_eolienne[i_eolien][0][i_point],i_eolien
+        #Si on est en train de faire le tour d'un rocher, on continue
         elif len(self.liste_chemin_en_cours) != 0:
             i_point, i_eolien = self.liste_chemin_en_cours[0]
             return self.G[0][i_point],-1
+        #Sinon on recalcule le chemin.
         else:
-            # print("chemin en cours vide, recherche d'un nouveau point ")
             next_pos,indice_eolienne_si_eolienne = self.prochain_points_etape1()
             return next_pos,indice_eolienne_si_eolienne
 
