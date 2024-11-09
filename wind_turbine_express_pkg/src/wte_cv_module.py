@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
 
+# Copyright 2024 Wind Turbine Express.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import rclpy
 import cv2
 from rclpy.node import Node
@@ -14,7 +28,7 @@ class OpenCvDecoder(Node):
 
         # Create a subscriber on the topic "image_raw"
         self.subscriber = self.create_subscription(Image, '/aquabot/sensors/cameras/main_camera_sensor/image_raw', self.image_callback, 10)
-
+        
         # Create a subscriber on the topic "image_raw"
         self.windturbines_report_publisher = self.create_publisher(String, '/vrx/windturbinesinspection/windturbine_checkup', 5)
 
@@ -28,22 +42,29 @@ class OpenCvDecoder(Node):
 
         # Convert ROS Image message to OpenCV image
         current_frame = self.br.imgmsg_to_cv2(msg)
+        
+        current_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)  # Convert to grayscale if needed
+        current_frame = cv2.equalizeHist(current_frame)  # Enhance contrast
+
         #self.get_logger().info(f"Image shape: {current_frame.shape}, dtype: {current_frame.dtype}")
 
-        if current_frame is None:
-            self.get_logger().error("The input image is empty")
+        if current_frame is None or current_frame.size == 0:
+            self.get_logger().error("The input image is empty or invalid")
             return
-        
+
         # Decode image
         data,bbox,rectifiedImage = self.qr_decoder.detectAndDecode(current_frame)
 
-        if len(data) > 0:
-            report_msg = String()
-            report_msg.data = data
-            self.get_logger().info('Decoded data: ' + data)
-            self.windturbines_report_publisher.publish(report_msg)
+        if bbox is not None and len(bbox) > 0:
+            if len(data) > 0:
+                report_msg = String()
+                report_msg.data = data
+                self.get_logger().info('Decoded data: ' + data)
+                self.windturbines_report_publisher.publish(report_msg)
+            else:
+                self.get_logger().info('No QR code detected in the image')
         else:
-            self.get_logger().info('No QR code detected')
+            self.get_logger().warning("No bounding box detected for QR code")
 
 def main(args=None):
     rclpy.init(args=args)

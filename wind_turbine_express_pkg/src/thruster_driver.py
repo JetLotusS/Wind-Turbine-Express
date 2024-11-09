@@ -1,9 +1,25 @@
 #!/usr/bin/env python3
 
+# Copyright 2024 Wind Turbine Express.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import rclpy
 import numpy as np
-import math
 from rclpy.node import Node
+from rclpy.time import Time
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Float64
@@ -11,28 +27,42 @@ from sensor_msgs.msg import Imu
 from wind_turbine_express_interfaces.msg import Thruster
 from rcl_interfaces.msg import SetParametersResult
 
+from tf2_ros import TransformException
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
+
 class ThrusterNode(Node):
 
     def __init__(self):
         super().__init__('thruster_node')
 
+        self.reentrant_group = ReentrantCallbackGroup()
+
         self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
         self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10)
         self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10)
-
+        self.cam_goal_pos_subscriber = self.create_subscription(Float64, '/aquabot/main_camera_sensor/goal_pose', self.cam_goal_pose_callback, 10)
+        
         # Create publishers for thruster control
-        self.left_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/thrust', 5)
-        self.right_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/thrust', 5)
-        self.left_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/pos', 5)
-        self.right_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/pos', 5)
+        self.left_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/thrust', 5, callback_group=self.reentrant_group)
+        self.right_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/thrust', 5, callback_group=self.reentrant_group)
+        self.left_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/pos', 5, callback_group=self.reentrant_group)
+        self.right_turn_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/pos', 5, callback_group=self.reentrant_group)
 
         # Create a publisher for camera control
-        self.cam_thruster_pub = self.create_publisher(Float64, '/aquabot/thrusters/main_camera_sensor/pos', 5)
-
-        # Create a timer that will call the timer_callback function every 200ms
-        self.timer_period = 0.2  # seconds
-        self.timer = self.create_timer(self.timer_period, self.driver_callback)
+        self.cam_thruster_pub = self.create_publisher(Float64, '/aquabot/thrusters/main_camera_sensor/pos', 5, callback_group=self.reentrant_group)
         
+        # For the camera TF listener
+        self.cam_tf_buffer = Buffer()
+        self.cam_tf_listener = TransformListener(self.cam_tf_buffer, self)
+
+        # Create a timer that will call the driver_callback function every 100ms
+        self.timer_period = 0.1  # seconds
+        self.timer = self.create_timer(self.timer_period, self.driver_callback, callback_group=self.reentrant_group)
+        
+        # Create a timer that will call the cam_tf_callback function every 100ms
+        self.timer2 = self.create_timer(self.timer_period, self.cam_tf_callback, callback_group=self.reentrant_group)
+
         # Add a callback for parameter changes
         self.add_on_set_parameters_callback(self.parameter_callback)
 
@@ -60,8 +90,8 @@ class ThrusterNode(Node):
 
         # Direction PID Controller variables
 
-        self.declare_parameter('kp', 0.025)
-        self.declare_parameter('ki', 0.0)
+        self.declare_parameter('kp', 0.1)
+        self.declare_parameter('ki', 0.01)
         self.declare_parameter('kd', 0.0)
 
         self.direction_controller_k_p = self.get_parameter('kp').get_parameter_value().double_value
@@ -71,6 +101,11 @@ class ThrusterNode(Node):
         self.direction_controller_previous_error = 0.0
         self.direction_controller_integral = 0.0
         self.thruster_turn_angle = 0.0
+        
+        # Declare camera variable
+
+        self.camera_angle = 0.0
+        self.camera_controller_k_p = 0.2
 
         self.get_logger().info('Thruster driver node started !')
 
@@ -184,9 +219,42 @@ class ThrusterNode(Node):
         self.y_goal_pose = msg.y
         self.yaw_goal_pose = msg.theta
         self.thruster_goal_speed = msg.speed
-        self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
-        self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, thruster_goal_speed: {self.thruster_goal_speed}")
+        #self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
+        #self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, thruster_goal_speed: {self.thruster_goal_speed}")
 
+
+    def cam_goal_pose_callback(self, msg):
+        """
+        Receives camera goal position
+        """
+        self.cam_goal_pose = msg.data
+
+
+    def cam_tf_callback(self):
+        """
+        Listen to the TF between the camera and the base_link to get the actual angle of the camera
+        """
+        from_frame_rel = 'wamv/wamv/base_link'
+        to_frame_rel = 'wamv/wamv/main_camera_post_link'
+    
+        trans = None
+        
+        try:
+            now = Time()
+            trans = self.cam_tf_buffer.lookup_transform(
+                        to_frame_rel,
+                        from_frame_rel,
+                        now)
+        except TransformException as ex:
+            self.get_logger().info(
+                f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+            return
+
+        quaternion = [trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z, trans.transform.rotation.w]
+
+        self.camera_tf_angle = -self.euler_from_quaternion(quaternion) # + and - inverted between the TF and the sim
+        #self.get_logger().info(f"camera_angle: {self.camera_tf_angle}")
+        
 
     def driver_callback(self):
         
@@ -198,7 +266,7 @@ class ThrusterNode(Node):
             self.get_logger().warning("No goal received yet!")
             return
 
-        if math.isnan(self.yaw_goal_pose):
+        if np.isnan(self.yaw_goal_pose):
             self.get_logger().warning("yaw_goal_pose nan")
             return
         
@@ -235,12 +303,14 @@ class ThrusterNode(Node):
 
         self.thruster_speed = min(speed_limit, np.abs(self.thruster_goal_speed))
 
-        cam_angle = Float64()
-        cam_angle.data = float(direction_controller_error)
+        # Camera proportional controller
+        cam_msg = Float64()
+        camera_angle_error = self.cam_goal_pose - self.camera_tf_angle
+        self.camera_angle += camera_angle_error*self.camera_controller_k_p
+        cam_msg.data = float(self.camera_angle)
 
         if self.thruster_goal_speed < 0:
             self.thruster_speed = - self.thruster_speed
-
 
         self.left_speed = self.thruster_speed
         self.right_speed = self.thruster_speed
@@ -263,15 +333,20 @@ class ThrusterNode(Node):
         self.left_turn_pub.publish(left_turn_msg)
         self.right_turn_pub.publish(right_turn_msg)
 
-        self.cam_thruster_pub.publish(cam_angle)
+        self.cam_thruster_pub.publish(cam_msg)
 
 def main(args=None):
     rclpy.init(args=args)
     thruster_node = ThrusterNode()
-    rclpy.spin(thruster_node)
-    thruster_node.destroy_node()
-    rclpy.shutdown()
 
+    executor = MultiThreadedExecutor(num_threads=8)
+    executor.add_node(thruster_node)
+
+    try:
+        executor.spin()
+    finally:
+        thruster_node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
