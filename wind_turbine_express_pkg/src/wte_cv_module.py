@@ -29,7 +29,7 @@ class OpenCvDecoder(Node):
         # Create a subscriber on the topic "image_raw"
         self.subscriber = self.create_subscription(Image, '/aquabot/sensors/cameras/main_camera_sensor/image_raw', self.image_callback, 10)
         
-        # Create a subscriber on the topic "image_raw"
+        # Create a publisher on the topic "windturbine_checkup"
         self.windturbines_report_publisher = self.create_publisher(String, '/vrx/windturbinesinspection/windturbine_checkup', 5)
 
         # Used to convert between ROS and OpenCV images
@@ -43,7 +43,7 @@ class OpenCvDecoder(Node):
         # Convert ROS Image message to OpenCV image
         current_frame = self.br.imgmsg_to_cv2(msg)
         
-        current_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)  # Convert to grayscale if needed
+        current_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
         current_frame = cv2.equalizeHist(current_frame)  # Enhance contrast
 
         #self.get_logger().info(f"Image shape: {current_frame.shape}, dtype: {current_frame.dtype}")

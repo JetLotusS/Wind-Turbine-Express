@@ -21,9 +21,8 @@ from rclpy.time import Time
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import NavSatFix, Imu
 from std_msgs.msg import Float64
-from sensor_msgs.msg import Imu
 from wind_turbine_express_interfaces.msg import Thruster
 from rcl_interfaces.msg import SetParametersResult
 

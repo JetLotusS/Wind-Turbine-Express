@@ -17,11 +17,9 @@
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float64
-from std_msgs.msg import UInt32
+from std_msgs.msg import Float64, UInt32
 from geometry_msgs.msg import PoseArray
-from sensor_msgs.msg import NavSatFix
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import NavSatFix, Imu
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from wind_turbine_express_interfaces.msg import Thruster
