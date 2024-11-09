@@ -55,7 +55,7 @@ class OpenCvDecoder(Node):
         # Decode image
         data,bbox,rectifiedImage = self.qr_decoder.detectAndDecode(current_frame)
 
-        if bbox is not None and len(bbox) > 0:
+        if bbox is not None:
             if len(data) > 0:
                 report_msg = String()
                 report_msg.data = data
