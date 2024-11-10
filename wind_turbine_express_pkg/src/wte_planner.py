@@ -39,7 +39,6 @@ class WTENavigationNode(Node):
         self.checkup_suscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10)
         self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10)
 
-
         timer_period = 0.25  # seconds
         self.timer = self.create_timer(timer_period, self.nav_point_callback)
         

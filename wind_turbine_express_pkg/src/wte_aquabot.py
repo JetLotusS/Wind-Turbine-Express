@@ -17,7 +17,7 @@
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float64, UInt32
+from std_msgs.msg import Float64, UInt32, String
 from geometry_msgs.msg import PoseArray
 from sensor_msgs.msg import NavSatFix, Imu
 from rclpy.executors import MultiThreadedExecutor
@@ -38,7 +38,8 @@ class WTEAquabotNode(Node):
         self.pinger_subscriber = self.create_subscription(ParamVec, '/aquabot/sensors/acoustics/receiver/range_bearing', self.pinger_callback, 10, callback_group=self.reentrant_group)
         self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/navigation/point', self.get_point_callback, 10, callback_group=self.reentrant_group)
         self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10, callback_group=self.reentrant_group)
-        
+        self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10)
+
         self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5)
         self.cam_goal_pos_pub = self.create_publisher(Float64, '/aquabot/main_camera_sensor/goal_pose', 5)
         self.critical_wind_turbine_pub = self.create_publisher(Thruster, '/aquabot/critical_wind_turbine_coordinates', 5)
@@ -55,18 +56,18 @@ class WTEAquabotNode(Node):
 
         self.aquabot_coordinate = [0.0, 0.0]
         self.aquabot_close_to_wind_turbine = False
+        self.aquabot_close_to_critical_wind_turbine = False
         self.closest_winturbine_angle = 0.0
 
         self.critical_wind_turbine_x = 0.0
         self.critical_wind_turbine_y = 0.0
         self.critical_wind_turbine_coordinates_calculated = False
+        self.its_time_to_stabilise = False
+        self.you_spin_me_right_round_baby_right_round = False
 
         # Constants
         self.origine_latitude = 48.04630
         self.origine_longitude = -4.97632
-
-        #Center point coordinate of each obstacle
-        self.obstacles_coordinates = [(-44, 222), (-94, 176), (98, 146), (-154, -3), (118, -48), (-45, -95), (10, -97), (-35, -150)]
         
         self.wt_coordinates_index = 0
         self.wind_turbines_coordinates = []
@@ -93,12 +94,20 @@ class WTEAquabotNode(Node):
         self.get_logger().info(f'current_task: {self.current_task}')
 
 
+    def chat_callback(self, msg):
+        data = msg.data
+        if data:
+            if data == "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !":
+                self.its_time_to_stabilise = True
+            self.get_logger().info(f"chat : {data}")
+
+
     def pinger_callback(self, msg):
         """
         Calcul once the coordinates of the critical wind turbine from the pinger data when task phase update to 2
         """
         if self.current_task == 2 and self.critical_wind_turbine_coordinates_calculated == False:
-            msg = Thruster()
+            msg_cwt_cordinates = Thruster()
 
             for param in msg.params:
                 if param.name == "bearing":
@@ -110,14 +119,23 @@ class WTEAquabotNode(Node):
             
             self.critical_wind_turbine_x = pinger_range*np.cos(critical_wind_turbine_theta) + self.aquabot_coordinate[0]
             self.critical_wind_turbine_y = pinger_range*np.sin(critical_wind_turbine_theta) + self.aquabot_coordinate[1]
-
-            if np.abs(critical_wind_turbine_theta) > np.pi:
-                self.critical_wind_turbine_x = -self.critical_wind_turbine_x
             self.critical_wind_turbine_coordinates_calculated = True
 
-            msg.x = self.critical_wind_turbine_x
-            msg.y = self.critical_wind_turbine_y
-            self.critical_wind_turbine_pub.publish(msg)
+            msg_cwt_cordinates.x = self.critical_wind_turbine_x
+            msg_cwt_cordinates.y = self.critical_wind_turbine_y
+            self.critical_wind_turbine_pub.publish(msg_cwt_cordinates)
+
+            eolienne_A_distance_to_critical = self.xy_distance(self.wind_turbines_coordinates[0][0], self.wind_turbines_coordinates[0][1], self.critical_wind_turbine_x, self.critical_wind_turbine_y)
+            eolienne_B_distance_to_critical = self.xy_distance(self.wind_turbines_coordinates[1][0], self.wind_turbines_coordinates[1][1], self.critical_wind_turbine_x, self.critical_wind_turbine_y)
+            eolienne_C_distance_to_critical = self.xy_distance(self.wind_turbines_coordinates[2][0], self.wind_turbines_coordinates[2][1], self.critical_wind_turbine_x, self.critical_wind_turbine_y)
+
+            self.wind_turbines_distance = [eolienne_A_distance_to_critical, eolienne_B_distance_to_critical, eolienne_C_distance_to_critical]
+
+            closest_wind_turbine_dist = min(self.wind_turbines_distance[0], self.wind_turbines_distance[1], self.wind_turbines_distance[2])
+
+            self.critical_wind_turbine_x = self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][0]
+            self.critical_wind_turbine_y = self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][1]
+
         else:
             return
 
@@ -274,6 +292,7 @@ class WTEAquabotNode(Node):
         eolienne_C_distance = self.xy_distance(self.wind_turbines_coordinates[2][0], self.wind_turbines_coordinates[2][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
 
         self.wind_turbines_distance = [eolienne_A_distance, eolienne_B_distance, eolienne_C_distance]
+        self.critical_wind_turbines_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])
 
         if point_x == Float64(data=0.0) and point_y == Float64(data=0.0):
             self.get_logger().warning("No point published yet!")
@@ -348,9 +367,18 @@ class WTEAquabotNode(Node):
             else:
                 self.aquabot_close_to_wind_turbine = False
 
+            if self.critical_wind_turbines_distance < 30:
+                self.aquabot_close_to_critical_wind_turbine = True
+            else:
+                self.aquabot_close_to_critical_wind_turbine = False
+
             # Reduce speed if aquabot close to wind turbine
-            if self.aquabot_close_to_wind_turbine:
+            if self.aquabot_close_to_wind_turbine and (self.current_task==1 or self.current_task==2):
                 thruster_msg.speed = thruster_msg.speed*0.5
+
+            # Reduce speed if aquabot close to critical wind turbine
+            if self.aquabot_close_to_critical_wind_turbine and (self.current_task==3 or self.current_task==4):
+                thruster_msg.speed = thruster_msg.speed*0.2
 
             thruster_msg.speed = thruster_msg.speed*(5000/6.17)
             self.thruster_pub.publish(thruster_msg)
