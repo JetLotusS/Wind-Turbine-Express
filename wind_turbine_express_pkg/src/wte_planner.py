@@ -37,6 +37,7 @@ class WTENavigationNode(Node):
         self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10)
         self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
         self.checkup_suscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10)
+        self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10)
 
 
         timer_period = 0.25  # seconds
@@ -44,7 +45,8 @@ class WTENavigationNode(Node):
         
         self.aquabot_coordinate = []
         self.wind_turbines_coordinates = []
-        
+        self.critical_wind_turbine_coordinates = []
+
         self.origine_latitude = 48.04630
         self.origine_longitude = -4.97632
 
@@ -118,6 +120,10 @@ class WTENavigationNode(Node):
         y = (lat_angle/360)*(2*np.pi*R) # distance between the two longitudes in m
 
         return x,y
+
+    def critical_wind_turbine_callback(self, msg):
+        msg.x = self.critical_wind_turbine_coordinates[0]
+        msg.y = self.critical_wind_turbine_coordinates[1]
 
     def nav_point_callback(self):
         """

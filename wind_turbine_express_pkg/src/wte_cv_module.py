@@ -52,19 +52,26 @@ class OpenCvDecoder(Node):
             self.get_logger().error("The input image is empty or invalid")
             return
 
-        # Decode image
-        data,bbox,rectifiedImage = self.qr_decoder.detectAndDecode(current_frame)
+        try:
+            data, bbox, rectifiedImage = self.qr_decoder.detectAndDecode(current_frame)
+        except cv2.error as e:
+            self.get_logger().error(f"OpenCV error: {e}")
+            return
 
-        if bbox is not None:
-            if len(data) > 0:
+        if bbox is not None and len(bbox) > 0 and cv2.contourArea(bbox) > 0:
+            
+            if data:
                 report_msg = String()
                 report_msg.data = data
                 self.get_logger().info('Decoded data: ' + data)
                 self.windturbines_report_publisher.publish(report_msg)
             else:
-                self.get_logger().info('No QR code detected in the image')
+                #self.get_logger().info('No QR code detected in the image')
+                return
+
         else:
-            self.get_logger().warning("No bounding box detected for QR code")
+            #self.get_logger().warning("No bounding box detected for QR code")
+            return
 
 def main(args=None):
     rclpy.init(args=args)
