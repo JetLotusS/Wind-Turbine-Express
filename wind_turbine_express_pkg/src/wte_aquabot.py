@@ -41,6 +41,7 @@ class WTEAquabotNode(Node):
         
         self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5)
         self.cam_goal_pos_pub = self.create_publisher(Float64, '/aquabot/main_camera_sensor/goal_pose', 5)
+        self.critical_wind_turbine_pub = self.create_publisher(Thruster, '/aquabot/critical_wind_turbine_coordinates', 5)
 
         # Create a timer that will call the timer_callback function every 100ms
         self.timer_period = 0.1  # seconds
@@ -97,19 +98,25 @@ class WTEAquabotNode(Node):
         Calcul once the coordinates of the critical wind turbine from the pinger data when task phase update to 2
         """
         if self.current_task == 2 and self.critical_wind_turbine_coordinates_calculated == False:
+            msg_critical_wt = Thruster()
+
             for param in msg.params:
                 if param.name == "bearing":
                     pinger_bearing = param.value.double_value
                 if param.name == "range":
                     pinger_range = param.value.double_value
+
             critical_wind_turbine_theta = self.yaw + pinger_bearing
-            self.critical_wind_turbine_x = pinger_range*np.cos(critical_wind_turbine_theta)
-            self.critical_wind_turbine_y = pinger_range*np.sin(critical_wind_turbine_theta)
-            if critical_wind_turbine_theta < 0:
-                self.critical_wind_turbine_y = -self.critical_wind_turbine_y
-            if np.abs(critical_wind_turbine_theta) > np.pi:
-                self.critical_wind_turbine_x = -self.critical_wind_turbine_x
+            
+            self.critical_wind_turbine_x = pinger_range*np.cos(critical_wind_turbine_theta) + self.aquabot_coordinate[0]
+            self.critical_wind_turbine_y = pinger_range*np.sin(critical_wind_turbine_theta) + self.aquabot_coordinate[1]
+
+
             self.critical_wind_turbine_coordinates_calculated = True
+
+            msg_critical_wt.x = self.critical_wind_turbine_x
+            msg_critical_wt.y = self.critical_wind_turbine_y
+            self.critical_wind_turbine_pub.publish(msg_critical_wt)
         else:
             return
 
@@ -343,6 +350,7 @@ class WTEAquabotNode(Node):
             # Reduce speed if aquabot close to wind turbine
             if self.aquabot_close_to_wind_turbine:
                 thruster_msg.speed = thruster_msg.speed*0.5
+            
 
             thruster_msg.speed = thruster_msg.speed*(5000/6.17)
             self.thruster_pub.publish(thruster_msg)

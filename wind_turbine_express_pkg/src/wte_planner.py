@@ -32,16 +32,16 @@ class WTENavigationNode(Node):
 
     def __init__(self):
         #TEMPLATE
-        super().__init__('wte_navigation_node_py')
+        super().__init__('wte_planner_node_py')
 
         self.navigation = self.create_publisher(Thruster, '/aquabot/navigation/point', 10)
+        self.chat_pub = self.create_publisher(String, '/aquabot/chat', 5)
         self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10)
-        self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10)
         self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
         self.checkup_suscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10)
-        self.pinger_subscriber = self.create_subscription(ParamVec, '/aquabot/sensors/acoustics/receiver/range_bearing', self.pinger_callback, 10)
         self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
-        
+        self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10)
+
 
         timer_period = 0.25  # seconds
         self.timer = self.create_timer(timer_period, self.nav_point_callback)
@@ -89,7 +89,7 @@ class WTENavigationNode(Node):
 
 
         #PARAMETRE NAVIGATION
-        
+        self.PHASE_STABILISATION_ENCLENCHEE = False
         # Parametre eoliennes.
         self.coordonnees_eoliennes = [] #Mise a jour dans ais callback
         self.l_graphe_eolienne = [[],[]] #Mis a jour lors de ais callback
@@ -99,6 +99,8 @@ class WTENavigationNode(Node):
         self.eolienne_vu = [False, False, False]
 
         self.eolienne_scanne = [False, False, False]
+
+        self.positions_eolienne_scanne = [[], [], []]
 
         self.pos_aquabot = (0,0) # Mis a jour dans gps_callback
 
@@ -115,6 +117,7 @@ class WTENavigationNode(Node):
         #Critical windturbine : 
         self.critical_windturbine_coordinates = (0,0)
         self.critical_windturbine_idx = -1
+        self.critical_wind_turbine_coordinates_calculated = False
         
         self.distance_point_passage_eolienne = 14
         
@@ -146,30 +149,50 @@ class WTENavigationNode(Node):
         # self.get_logger().info(f"chemin rocher en cours : {self.liste_chemin_en_cours}")
         self.get_logger().info(f"PHASE ACTUELLE : {self.current_task}")
         self.get_logger().info(f"EOLIENNES SCANNEES : {self.eolienne_scanne}")
+        if self.PHASE_STABILISATION_ENCLENCHEE:
+            self.get_logger().info(f"PHASE DE STABILISATION ENCLENCHEE")
 
-        if self.critical_wind_turbine_coordinates_calculated:
+        if self.critical_wind_turbine_coordinates_calculated and not self.PHASE_STABILISATION_ENCLENCHEE:
             self.get_logger().info(f"Critical Windturbine coordinates : {self.critical_windturbine_coordinates}")
             self.get_logger().info(f"Windturbine coordinates : {self.coordonnees_eoliennes}")
 
-        if self.eoliennes_data_initialisee:
-            next_pos, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
 
+        next_pos = None
+        if self.current_task == 3:
+            point_a_atteindre = self.moyenne_liste_coord(self.positions_eolienne_scanne[self.i_eolienne])
+            if self.dist(point_a_atteindre,self.pos_aquabot) < self.tolerance_target_dist:
+                if not self.PHASE_STABILISATION_ENCLENCHEE:
+                    Point_objectif_bateau = self.pos_aquabot
+                    nav_msg = Thruster() 
+                    nav_msg.x = float(Point_objectif_bateau[0])
+                    nav_msg.y = float(Point_objectif_bateau[1])
+                    self.navigation.publish(nav_msg)
+                self.PHASE_STABILISATION_ENCLENCHEE = True
+                self.get_logger().info("POINT ATTEINT, ENCLENCHER STABILISATION")
+                msg = String()
+                msg.data = "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !"
+                self.chat_pub.publish(msg)
+                #On publie la position de l'éolienne... O_O
+                next_pos = point_a_atteindre
 
+        if not self.PHASE_STABILISATION_ENCLENCHEE:
+            if self.eoliennes_data_initialisee:
+                next_pos, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
+            else:
+                self.get_logger().info("Données par encore initialisée")
+                next_pos = (0,0)
 
-        else:
-            self.get_logger().info("Données par encore initialisée")
-            next_pos = (0,0)
-        self.get_logger().info("next_pos published : ")
-        self.get_logger().info(f"x : {next_pos[0]} y : {next_pos[1]}")
+        
+        if not self.PHASE_STABILISATION_ENCLENCHEE:
+            prochaine_coord_bateau = next_pos
 
-
-        prochaine_coord_bateau = next_pos
-
-        Point_objectif_bateau = [prochaine_coord_bateau[0],prochaine_coord_bateau[1]] 
-        nav_msg = Thruster() 
-        nav_msg.x = float(Point_objectif_bateau[0])
-        nav_msg.y = float(Point_objectif_bateau[1])
-        self.navigation.publish(nav_msg)
+            Point_objectif_bateau = [prochaine_coord_bateau[0],prochaine_coord_bateau[1]] 
+            nav_msg = Thruster() 
+            nav_msg.x = float(Point_objectif_bateau[0])
+            nav_msg.y = float(Point_objectif_bateau[1])
+            self.get_logger().info("next_pos published : ")
+            self.get_logger().info(f"x : {next_pos[0]} y : {next_pos[1]}")
+            self.navigation.publish(nav_msg)
 
     def ais_callback(self, msg):
         """Met a jour les coordonnées des éoliennes
@@ -233,44 +256,8 @@ class WTENavigationNode(Node):
         self.id_eolienne_checked = msg_dico["id"]
         self.state_eolienne_checked = msg_dico["state"]
         self.eolienne_scanne[self.id_eolienne_checked] = True
+        self.positions_eolienne_scanne[self.id_eolienne_checked].append(self.pos_aquabot)
         self.get_logger().info(f"Data qr code received : id:{self.id_eolienne_checked} state_eolienne : {self.state_eolienne_checked}")
-
-    def pinger_callback(self, msg):
-        """
-        Calcul once the coordinates of the critical wind turbine from the pinger data when task phase update to 2
-        """
-        if self.current_task == 2 and self.critical_wind_turbine_coordinates_calculated == False:
-            for param in msg.params:
-                if param.name == "bearing":
-                    pinger_bearing = param.value.double_value
-                if param.name == "range":
-                    pinger_range = param.value.double_value
-            critical_wind_turbine_theta = self.yaw + pinger_bearing
-            self.critical_wind_turbine_x = pinger_range*np.cos(critical_wind_turbine_theta)
-            self.critical_wind_turbine_y = pinger_range*np.sin(critical_wind_turbine_theta)
-            if critical_wind_turbine_theta < 0:
-                self.critical_wind_turbine_y = -self.critical_wind_turbine_y
-            if np.abs(critical_wind_turbine_theta) > np.pi:
-                self.critical_wind_turbine_x = -self.critical_wind_turbine_x
-            self.critical_wind_turbine_coordinates_calculated = True
-            self.critical_windturbine_coordinates = (self.critical_wind_turbine_x,self.critical_wind_turbine_y)
-
-            self.get_logger().info(f"Wind_Turbine_Coordinates received : {self.critical_windturbine_coordinates}")        
-
-            self.initialise_phase_2()
-
-        else:
-            return
-
-        self.get_logger().info(f'pinger : bearing: {pinger_bearing}, range: {pinger_range}')
-        self.get_logger().info(f'critical_wind_turbine_x: {self.critical_wind_turbine_x}, critical_wind_turbine_y: {self.critical_wind_turbine_y}')
-
-    def imu_callback(self, msg):
-        """
-        Receives aquabot yaw
-        """
-        quaternion = [msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w]
-        self.yaw = self.euler_from_quaternion(quaternion)
 
     def current_phase_callback(self, msg):
         """
@@ -279,29 +266,10 @@ class WTENavigationNode(Node):
         self.current_task = msg.data
         self.get_logger().info(f'current_task: {self.current_task}')
 
-    def euler_from_quaternion(self, quaternion):
-        """
-        Converts quaternion (w in last place) to Euler roll, pitch, yaw \n
-        Quaternion = [x, y, z, w]
-        """
-
-        x = quaternion[0]
-        y = quaternion[1]
-        z = quaternion[2]
-        w = quaternion[3]
-
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-        roll = np.arctan2(sinr_cosp, cosr_cosp)
-
-        sinp = 2 * (w * y - z * x)
-        pitch = np.arcsin(sinp)
-
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        yaw = np.arctan2(siny_cosp, cosy_cosp)
-
-        return yaw
+    def critical_wind_turbine_callback(self, msg):
+        self.critical_windturbine_coordinates = (msg.x,msg.y)
+        self.initialise_phase_2()
+    
     #Mets tes fonctions ici (dans la classe WTENavigationNode) en enlevant tout le graphique
 
     #END FUNCTION TEMPLATE
@@ -312,7 +280,20 @@ class WTENavigationNode(Node):
         wind_turbine_target_idx = self.indice_plus_proche(self.coordonnees_eoliennes, windturbine_target)
         self.eolienne_vu[wind_turbine_target_idx] = False
         self.critical_windturbine_idx = wind_turbine_target_idx
+        self.critical_wind_turbine_coordinates_calculated = True
 
+    def moyenne_liste_coord(self,l_coord):
+        n = len(l_coord)
+        coord_somme = (0,0)
+        for i in range(len(l_coord)):
+            c = l_coord[i]
+            coord_somme = self.add_vect(c,coord_somme)
+        
+        if n == 0:
+            self.get_logger().error("MOYENNE : liste vide !")
+            return (0,0)
+        else:
+            return self.mul_vect(coord_somme,1/n)
 
     def precharger_carte_distance(self,nom_fichier):
         """
@@ -658,11 +639,16 @@ class WTENavigationNode(Node):
         if self.dist(self.pos_aquabot,self.coordonnees_eoliennes[self.i_eolienne]) < 1.6*self.distance_point_passage_eolienne+self.tolerance_target_dist and len(self.l_chemin_en_cours_autour_eolienne) == 0:
             self.liste_chemin_en_cours.clear()
 
-        #Si on est en train de faire le tour d'une eolienne, on continue
-        if len(self.l_chemin_en_cours_autour_eolienne) >0:
+        # Si on est a la phase 3 et qu'on est proche de l'éolienne qu'on veut atteindre.
+        if self.current_task == 3 and self.dist(self.aquabot_coordinate,self.coordonnees_eoliennes[self.i_eolienne]) < 1.6*self.distance_point_passage_eolienne+self.tolerance_target_dist:
+            # On fait le tour de l'éolienne jusqu'à atteindre le point scanné.
+            pass
+
+        # Si on est en train de faire le tour d'une eolienne, on continue
+        if len(self.l_chemin_en_cours_autour_eolienne) > 0:
             i_point, i_eolien = self.l_chemin_en_cours_autour_eolienne[0]
             return self.l_graphe_eolienne[i_eolien][0][i_point],i_eolien
-        #Si on est en train de faire le tour d'un rocher, on continue
+        # Si on est en train de faire le tour d'un rocher, on continue
         elif len(self.liste_chemin_en_cours) != 0:
             i_point, i_eolien = self.liste_chemin_en_cours[0]
             return self.G[0][i_point],-1
@@ -681,15 +667,10 @@ class WTENavigationNode(Node):
 
         i_actuel = 0
 
-        while i_actuel < len(self.eolienne_vu) and self.eolienne_vu[self.ordre_visite[i_actuel]]:
+        while i_actuel < len(self.eolienne_vu) and self.eolienne_vu[self.ordre_visite[i_actuel]] and self.eolienne_scanne[self.ordre_visite[i_actuel]]:
             i_actuel += 1
     
-        """
-            if i_actuel == len(self.eolienne_vu):
-            self.get_logger().fatal("FINI")
-            self.liste_chemin_en_cours.clear()
-            return (0,0),-1
-        """
+
         if i_actuel == len(self.eolienne_vu):
             self.get_logger().info("EOLIENNE TOUTE VISITEE, PASSAGE PHASE 2")
             self.get_logger().info(f"PHASE ACTUELLE : {self.current_task}")

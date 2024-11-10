@@ -48,26 +48,27 @@ class OpenCvDecoder(Node):
 
         #self.get_logger().info(f"Image shape: {current_frame.shape}, dtype: {current_frame.dtype}")
 
-        if current_frame is None or current_frame.size < 0.0001:
+        if current_frame is None or current_frame.size == 0:
             self.get_logger().error("The input image is empty or invalid")
             return
 
         try:
-            data,bbox,rectifiedImage = self.qr_decoder.detectAndDecode(current_frame)
-        except:
-            bbox = None
-            self.get_logger().error("Detect and decode function failed. Image scan aborted.s")
-        
-        if bbox is not None:
-            if len(bbox) > 0:
-                if len(data) > 0:
-                    report_msg = String()
-                    report_msg.data = data
-                    self.get_logger().info('Decoded data: ' + data)
-                    self.windturbines_report_publisher.publish(report_msg)
-                else:
-                    #self.get_logger().info('No QR code detected in the image')
-                    return
+            data, bbox, rectifiedImage = self.qr_decoder.detectAndDecode(current_frame)
+        except cv2.error as e:
+            self.get_logger().error(f"OpenCV error: {e}")
+            return
+
+        if bbox is not None and len(bbox) > 0 and cv2.contourArea(bbox) > 0:
+            
+            if data:
+                report_msg = String()
+                report_msg.data = data
+                self.get_logger().info('Decoded data: ' + data)
+                self.windturbines_report_publisher.publish(report_msg)
+            else:
+                #self.get_logger().info('No QR code detected in the image')
+                return
+
         else:
             #self.get_logger().warning("No bounding box detected for QR code")
             return
