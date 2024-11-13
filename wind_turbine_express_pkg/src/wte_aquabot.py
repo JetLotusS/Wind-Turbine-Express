@@ -160,8 +160,10 @@ class WTENavigationNode(Node):
 
 
         next_pos = None
-        if self.current_task == 3:
+        if self.current_task >= 3:
             point_a_atteindre = self.moyenne_liste_coord(self.positions_eolienne_scanne[self.i_eolienne])
+            vect_eolienne_point = self.add_vect(point_a_atteindre,self.mul_vect(self.coordonnees_eoliennes[self.i_eolienne],-1))
+            vect_eolienne_point = self.mul_vect(vect_eolienne_point,self.distance_point_passage_eolienne_CRITIQUE/self.norme_vecteur(vect_eolienne_point))
             if self.dist(point_a_atteindre,self.pos_aquabot) < self.tolerance_target_dist:
                 if not self.PHASE_STABILISATION_ENCLENCHEE:
                     Point_objectif_bateau = self.pos_aquabot
