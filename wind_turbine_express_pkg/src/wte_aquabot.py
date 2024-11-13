@@ -844,28 +844,95 @@ class WTENavigationNode(Node):
         indice_plus_proche_eolienne = self.indice_plus_proche(coord_connecte_au_caillou,pos_du_premier_point)
         # Au lieu de regarder les plus prochzs, il faut rrgarder lesquelles on peut passser pour contourner les rochers
 
-        chemin_dindices_rocher_a_parcourir = self.trouver_chemin(self.G, indice_rocher_plus_proche_bateau, indice_rocher_connecte_au_caillou[indice_plus_proche_eolienne])
+        chemin_dindices_a_parcourir = self.trouver_chemin(self.G, indice_rocher_plus_proche_bateau, indice_rocher_connecte_au_caillou[indice_plus_proche_eolienne])
         # Le chemin existe, car, indice_rocher_plus_proche_bateau et indice_plus_proche_eolienne sont dans une meme composante connexe de G
 
-        chemin_optimise = self.optimise_chemin(indice_rocher_connecte_au_caillou, chemin_dindices_rocher_a_parcourir, self.pos_aquabot, pos_du_premier_point)
 
-        for idx in chemin_dindices_rocher_a_parcourir:
+        #Chemin qui ne colle pas aux rochers
+        chemin_optimise_dindices_a_parcourir = self.optimise_chemin(indice_rocher_connecte_au_caillou, chemin_dindices_a_parcourir, self.pos_aquabot, pos_du_premier_point)
+
+        self.get_logger().info(f"CHEMIN CHOISI : {chemin_dindices_a_parcourir}")
+        self.get_logger().info(f"CHEMIN OPTIMISE : {chemin_optimise_dindices_a_parcourir}")
+
+        #Utilisation du chemin optimal 
+        chemin_dindices_a_parcourir = chemin_optimise_dindices_a_parcourir
+
+        for idx in chemin_dindices_a_parcourir:
             self.liste_chemin_en_cours.append((idx,-1))
 
         return coord_rocher_plus_proche_bateau,-1
 
-    def optimise_chemin(self, composante_connexe, chemin_des_indices_parcouru,coord_depart, coord_arrive):
+    def optimise_chemin(self, composante_connexe, chemin_des_indices_parcouru_original,coord_depart, coord_arrive):
         """Optimise le chemin emprunté par le drone
         /!\ EN DEVELOPPEMENT"""
 
-
+        chemin_des_indices_parcouru = copy.deepcopy(chemin_des_indices_parcouru_original)
+        
         # On parcours les indices parcouru
+        indice_le_plus_loin = 0
+        for i in range(len(chemin_des_indices_parcouru)):
+            idx_rocher = chemin_des_indices_parcouru[i]
+            p_rocher = self.G[0][idx_rocher]
+            self.se_croise
+            segment_bateau_rocher = (coord_depart, self.add_vect(coord_depart, self.add_vect(self.mul_vect(coord_depart,-1),p_rocher)))
 
-        # On regarde si on peut pas aller de l'aquabot a un des points du chemin, sans passer au travers du rocher
+            # On regarde si on peut pas aller de l'aquabot a un des points du chemin, sans passer au travers du rocher
+            indice_coupable = True
+            for k in range(len(composante_connexe)):
+                caillou = composante_connexe[k]
+                v_caillou = self.G[1][caillou]
+                for j in range(len(v_caillou)):
+                    voisin = v_caillou[j]
+                    if caillou != idx_rocher and voisin != idx_rocher:
+                        
+                        segment = (self.G[0][caillou], self.G[0][voisin])
 
-        # Si on peut, on raccourcis le chemin en enlevant les noeux avant
+                        if self.se_croise(segment, segment_bateau_rocher):
+                            indice_coupable = False
+
+            # Si on peut, on raccourcis le chemin en enlevant les noeux avant
+            if indice_coupable:
+                indice_le_plus_loin = i
+        
+        for k in range(indice_le_plus_loin):
+            id_pop = chemin_des_indices_parcouru.pop(0)
+            self.rocher_deja_atteint.append(id_pop)
+
 
         # On fait la meme mais depuis l'éolienne.
+
+        # On parcours les indices parcouru
+        indice_le_plus_loin = 0
+        for i in range(len(chemin_des_indices_parcouru)):
+            idx_rocher = chemin_des_indices_parcouru[i]
+            p_rocher = self.G[0][idx_rocher]
+            self.se_croise
+            segment_bateau_rocher = (coord_arrive, self.add_vect(coord_arrive, self.add_vect(self.mul_vect(coord_arrive,-1),p_rocher)))
+
+            # On regarde si on peut pas aller de l'aquabot a un des points du chemin, sans passer au travers du rocher
+            indice_coupable = True
+            for k in range(len(composante_connexe)):
+                caillou = composante_connexe[k]
+                v_caillou = self.G[1][caillou]
+                for j in range(len(v_caillou)):
+                    voisin = v_caillou[j]
+                    if caillou != idx_rocher and voisin != idx_rocher:
+                        
+                        segment = (self.G[0][caillou], self.G[0][voisin])
+
+                        if self.se_croise(segment, segment_bateau_rocher):
+                            indice_coupable = False
+
+            # Si on peut, on raccourcis le chemin en enlevant les noeux avant
+            if indice_coupable:
+                indice_le_plus_loin = i
+                break
+        
+        n = len(chemin_des_indices_parcouru)
+        for k in range(indice_le_plus_loin + 1,n):
+            id_pop = chemin_des_indices_parcouru.pop(indice_le_plus_loin + 1)
+            self.rocher_deja_atteint.append(id_pop)
+
 
 
         return chemin_des_indices_parcouru
