@@ -15,7 +15,6 @@
 # limitations under the License.
 
 import math
-import cv2
 import rclpy
 import numpy as np
 import os
@@ -23,26 +22,27 @@ import copy
 from rclpy.node import Node
 from wind_turbine_express_interfaces.msg import Thruster
 from geometry_msgs.msg import PoseArray
-from sensor_msgs.msg import NavSatFix, Imu
+from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String, UInt32
 from ament_index_python.packages import get_package_share_directory
-from ros_gz_interfaces.msg import ParamVec
 
 class WTENavigationNode(Node):
 
     def __init__(self):
-        #TEMPLATE
         super().__init__('wte_planner_node_py')
 
+        self.get_logger().info("Début d'initialisation.")
+
+        #Publisher et Subscriber
         self.navigation = self.create_publisher(Thruster, '/aquabot/navigation/point', 10)
         self.chat_pub = self.create_publisher(String, '/aquabot/chat', 5)
         self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10)
         self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
-        self.checkup_suscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10)
+        self.checkup_subscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10)
         self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
         self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10)
 
-
+        # Publisher
         timer_period = 0.25  # seconds
         self.timer = self.create_timer(timer_period, self.nav_point_callback)
         
@@ -52,83 +52,58 @@ class WTENavigationNode(Node):
         self.origine_latitude = 48.04630
         self.origine_longitude = -4.97632
         
-        # vnuezvburb
+        # Checkup subscriber
         self.id_eolienne_checked = 0
         self.state_eolienne_checked = ""
 
-        # gangenagna
-        self.current_task = 0
-
-        #Pinger critical windturbine 
+        # Pinger critical windturbine 
         self.critical_wind_turbine_coordinates_calculated = False
-        
-        #IMU
-        self.yaw = 0
-        # Declare les variables ici
-        #END TEMPLATE
-        self.get_logger().info("Begin initialisation")
 
-        # Précharger carte des distance euclidiennes : 
+        # Current phase subscriber
+        self.current_task = 0 # Etape actuel du Challenge
 
+        # Précharger graphe des rochers : 
         nom_package = "wind_turbine_express_pkg"
-        chemin_relatif_image_dist = "images/dist_transform.jpg"
-        chemin_complet_image_dist = os.path.join(get_package_share_directory(nom_package), chemin_relatif_image_dist)
-
-        self.carte_pixel = self.precharger_carte_distance(chemin_complet_image_dist)
-        if self.carte_pixel is not None:
-            self.taille_carte_dist_transform = self.carte_pixel.shape
-        else:
-            self.get_logger().error("ECHEC CHARGEMENT CARTE DISTANCE !")
-
-
         chemin_relatif_graph_rocher = "assets/graph_rocher.txt"
-        chemin_complet_graph_rocher = os.path.join(get_package_share_directory(nom_package), chemin_relatif_graph_rocher)
+        chemin_complet_graph_rocher = os.path.join(get_package_share_directory(nom_package), chemin_relatif_graph_rocher) # Chemin vers le fichier contenant le graphe.
 
-        #Charger le graphe des rochers 
-        self.G = self.recup_graphe(chemin_complet_graph_rocher)
+        # GRAPHE DES ROCHERS (point autour des rochers, permettant de les contourner.)
+        self.G = self.recup_graphe(chemin_complet_graph_rocher) # Charger le graphe des rochers 
+        self.liste_chemin_en_cours = [] # liste des indices des rochers en train d'être parcouru.
+        self.rocher_deja_atteint = [] # Liste des indices des rochers déjà atteint. Collisions avec ignoré.
 
+        # PARAMETRE NAVIGATION
+        self.PHASE_STABILISATION_ENCLENCHEE = False # Signal le début de la phase de stabilisation et empêche la publication de nouveau point.
+        self.pos_aquabot = (0,0) # Mis a jour dans gps_callback Position de l'aquabot.
 
-        #PARAMETRE NAVIGATION
-        self.PHASE_STABILISATION_ENCLENCHEE = False
-        # Parametre eoliennes.
-        self.coordonnees_eoliennes = [] #Mise a jour dans ais callback
-        self.l_graphe_eolienne = [[],[]] #Mis a jour lors de ais callback
+        # Parametre eoliennes. Initialisées correctement lors de ais callback
+        self.coordonnees_eoliennes = [] # Coordonnées des éoliennes
+        self.l_graphe_eolienne = [[],[]] # Utilisée lorsqu'on parcours une éolienne dans la phase 1
         self.l_graphe_eolienne_critique = [[],[]] # Utilisée lorsqu'on parcours une éolienne dans un état critique.
-        self.eoliennes_data_initialisee = False
-        self.i_eolienne = -1
-        d, self.ordre_visite = 0,(0,1,2)
-        self.eolienne_vu = [False, False, False]
+        self.i_eolienne = -1 # Eolienne en cours de visite actuelle. 
+        self.ordre_visite = (0,1,2) # Ordre de visite non initialisées
+        self.eolienne_vu = [False, False, False] # Eolienne pas encore explorées initalement
+        self.eolienne_scanne = [False, False, False] # Eolienne pas encore scannées initialement
+        self.eoliennes_data_initialisee = False # Données des éolienne non initialisée de base
+        self.positions_eolienne_scanne = [[], [], []] # Stocke les positions des éoliennes scannées
+        self.l_chemin_en_cours_autour_eolienne = [] #liste des points en train d'être parcouru autour d'une eolienne
 
-        self.eolienne_scanne = [False, False, False]
-
-        self.positions_eolienne_scanne = [[], [], []]
-
-        self.pos_aquabot = (0,0) # Mis a jour dans gps_callback
-
-        # liste du chemin en cours
-        self.liste_chemin_en_cours = []
-
-        #liste des points en train d'être parcouru autour d'une eolienne
-        self.l_chemin_en_cours_autour_eolienne = []
-
-        #Liste des rochers deja atteint
-        self.rocher_deja_atteint = []
-        self.p_eolien_deja_atteint = []
-
-        #Critical windturbine : 
-        self.critical_windturbine_coordinates = (0,0)
-        self.critical_windturbine_idx = -1
-        self.critical_wind_turbine_coordinates_calculated = False
+        # Critical windturbine : (Mis a jour lors du critical_wind_turbine_callback)
+        self.critical_windturbine_coordinates = (0,0) # Position de léolienne dans un état critique
+        self.critical_windturbine_idx = -1 # Indice de l'éolienne dans un état critique
+        self.critical_wind_turbine_coordinates_calculated = False # Indique si les varialbe concernant l'éolienne en état critique on été initialisée.
         
-        self.distance_point_passage_eolienne_CRITIQUE = 10
-        self.distance_point_passage_eolienne = 14
-        
-        self.tolerance_target_dist = 15
-        
-        self.get_logger().info("End of initialisationt")
+        # Paramètres de la navigation.
 
+        self.distance_point_passage_eolienne_CRITIQUE = 10 # Distance des points de passage autour de l'éolienne en état critique.
+        self.distance_point_passage_eolienne = 14 # Distance des points de passage autour des éolienne lors de la phase 1
+        
+        self.tolerance_target_dist = 15 # Distance de tolérance à partir duquel on considère que les points sont atteints.
+        
+        self.get_logger().info("Initialisation terminée.")
 
-    #FUNCTION TEMPLATE
+    # FONCTION DE CALLBACK.
+    
     def coordinates_from_point(self, lat1, long1, lat2, long2):
         
         R = 6366354 # earth radius at latitude 48.04630
@@ -220,11 +195,11 @@ class WTENavigationNode(Node):
             self.coordonnees_eoliennes = self.wind_turbines_coordinates.copy() # On met a jour les coordonnées des éoliennes
             self.l_graphe_eolienne = copy.deepcopy(self.genere_graphe_eolienne(self.coordonnees_eoliennes,False)) # On met a jour les graphes des éoliennes
             self.l_graphe_eolienne_critique = copy.deepcopy(self.genere_graphe_eolienne(self.coordonnees_eoliennes,True)) # On met a jour les graphes des éoliennes critique (les distance sont a self.eolienne__critique)
-            d,self.ordre_visite = self.calcul_ordre_parcours_eolienne()
+            self.ordre_visite = self.calcul_ordre_parcours_eolienne()
             self.eoliennes_data_initialisee = True
             self.get_logger().info("POS_EOLIENNE_INITIALISEE : ")
-            print(f"graphe eolienne : {self.l_graphe_eolienne}")
-            print(f"graphe eolienne CRITIQUE : {self.l_graphe_eolienne}")
+            self.get_logger().info(f"graphe eolienne : {self.l_graphe_eolienne}")
+            self.get_logger().info(f"graphe eolienne CRITIQUE : {self.l_graphe_eolienne_critique}")
     
     def gps_callback(self, msg):
         """Met a jour la position GPS du bateau"""
@@ -234,12 +209,10 @@ class WTENavigationNode(Node):
         self.aquabot_coordinate = self.coordinates_from_point(msg.latitude, msg.longitude, self.origine_latitude, self.origine_longitude) # position de l'aquabot
 
         self.pos_aquabot = self.aquabot_coordinate # On met a jour la position de l'aquabot
-        #self.get_logger().info(f"pos bateau : x:{self.aquabot_coordinate[0]} y:{self.aquabot_coordinate[1]}")
         
         # On vérifie si il a atteint le point suivant si il en a a atteindre : 
         if len(self.l_chemin_en_cours_autour_eolienne)>0:
             i_pos_autour_eolienne,i_eolienne = self.l_chemin_en_cours_autour_eolienne[0]
-
 
 
             if self.current_task < 2:
@@ -281,17 +254,15 @@ class WTENavigationNode(Node):
         self.critical_windturbine_coordinates = (msg.x,msg.y)
         self.initialise_phase_2()
     
-    #Mets tes fonctions ici (dans la classe WTENavigationNode) en enlevant tout le graphique
+    # FONCTIONS DE CALCUL DU CHEMIN.
 
-    #END FUNCTION TEMPLATE
-
-    #Mes fonctions sans le graphique
     def initialise_phase_2(self):
-        windturbine_target = self.critical_windturbine_coordinates
-        wind_turbine_target_idx = self.indice_plus_proche(self.coordonnees_eoliennes, windturbine_target)
-        self.eolienne_vu[wind_turbine_target_idx] = False
-        self.critical_windturbine_idx = wind_turbine_target_idx
-        self.critical_wind_turbine_coordinates_calculated = True
+        """Initialise toute les variable relative au début de la phase 2."""
+        windturbine_target = self.critical_windturbine_coordinates # Coordonnées calculée approximativement de la position de l'éolienne critique.
+        wind_turbine_target_idx = self.indice_plus_proche(self.coordonnees_eoliennes, windturbine_target) # On devine l'indice de l'éolienne en état critique ne prenant l'éolienne la plus proche
+        self.eolienne_vu[wind_turbine_target_idx] = False # On met l'éolienne comme n'étant pas vu, pour forcer le système à aller vers elle.
+        self.critical_windturbine_idx = wind_turbine_target_idx # On met comme cible de destination l'éolienne en état critique
+        self.critical_wind_turbine_coordinates_calculated = True # On met qu'on a calculé tout ce qu'il fallait pour que le système démarre la phase 2
 
     def moyenne_liste_coord(self,l_coord):
         n = len(l_coord)
@@ -306,16 +277,6 @@ class WTENavigationNode(Node):
         else:
             return self.mul_vect(coord_somme,1/n)
 
-    def precharger_carte_distance(self,nom_fichier):
-        """
-        Charge limage des distance dans la ram.
-        """
-        image = cv2.imread(nom_fichier)
-        if image is not None:
-            return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        else:
-            return None
-
     def mul_vect(self, v, lambd):
         """
         Multiplie 1 vecteur de taille 2 par un scalaire
@@ -327,34 +288,6 @@ class WTENavigationNode(Node):
         Ajoute 2 vecteurs de taille 2
         """
         return (v[0] + v2[0], v[1] + v2[1])
-
-    def get_distance_caillou(self):
-        """
-            Renvoie la vitesse recommandé (entre 0 et 1) en fonction de l'image des distance eulerienne
-        """
-        x_carte = self.taille_carte_dist_transform[0] * (self.pos_aquabot[0] + 300) / 600
-        y_carte = self.taille_carte_dist_transform[1] * (self.pos_aquabot[1] + 300) / 600
-        x, y = math.floor(x_carte), math.floor(y_carte)
-        dec_x = x_carte - x
-        dec_y = y_carte - y
-
-        if x_carte >= self.taille_carte_dist_transform[0] - 1 or y_carte >= self.taille_carte_dist_transform[1] - 1 or x_carte < 0 or y_carte < 0:
-            return 1
-
-        px_entier = self.carte_pixel[x, y]
-        px_droit = self.carte_pixel[x + 1, y]
-        px_haut = self.carte_pixel[x, y + 1]
-        px_coin = self.carte_pixel[x + 1, y + 1]
-
-        px_e_partie = px_entier * (1 - dec_x) * (1 - dec_y)
-        px_d_partie = px_droit * dec_x * (1 - dec_y)
-        px_h_partie = px_haut * (1 - dec_x) * dec_y
-        px_c_partie = px_coin * dec_x * dec_y
-
-        total = px_e_partie + px_d_partie + px_c_partie + px_h_partie
-        moyenne = total
-
-        return moyenne
 
     def recup_graphe(self,nom_f):
         """
@@ -368,6 +301,7 @@ class WTENavigationNode(Node):
 
         if f is not None:
             texte = f.read()
+            self.get_logger().info("Graphe chargé avec succès.")
         else:
             texte = "0"
             self.get_logger().error("ECHEC CHARGEMENT GRAPHE !")
@@ -598,7 +532,7 @@ class WTENavigationNode(Node):
             if i != len(liste_ordre) - 1:
                 p1 = self.coordonnees_eoliennes[liste_ordre[i+1]]
             else:
-                p1 = self.pos_aquabot
+                p1 = p0
 
         return d
 
@@ -615,10 +549,7 @@ class WTENavigationNode(Node):
                 cout_min = cout
                 meilleur_ordre = ord
 
-        return cout_min,meilleur_ordre
-    
-    #AJOUTER UNE FINCTION QUI UNE FOIS LE QR CODE distance_point_passage_eolienne
-    #Vide ke chemin eolienne pour aller vers la prochaine
+        return meilleur_ordre
     
     def point_atteint(self,i_eolienne):
         """
@@ -626,25 +557,25 @@ class WTENavigationNode(Node):
         """
         if len(self.l_chemin_en_cours_autour_eolienne)>0:
             i_point,i_eolien = self.l_chemin_en_cours_autour_eolienne.pop(0)
-            if self.current_task < 2:
-                p_atteint = self.l_graphe_eolienne[i_eolien][0][i_point]
-            else:
-                p_atteint = self.l_graphe_eolienne_critique[i_eolien][0][i_point]
-            self.p_eolien_deja_atteint.append(p_atteint)
-        elif len(self.liste_chemin_en_cours) > 0:
+           
+        if len(self.liste_chemin_en_cours) > 0:
             i_point,i_eolien = self.liste_chemin_en_cours.pop(0)
-            p_atteint = self.G[0][i_point]
             # On a atteint un rocher, on l'ajoute dans les rochers déjà atteint
             self.rocher_deja_atteint.append(i_point)
-        else:
-            p_atteint = self.pos_aquabot
         
         if i_eolienne != -1:
-            p_e = self.coordonnees_eoliennes[i_eolienne]
-            #print("EOLIENNE ATTEINTE")
+            # On marque l'éolienne atteinte comme exploré
             self.eolienne_vu[i_eolienne] = True
             # on remet a 0 les rochers atteint.
             self.rocher_deja_atteint.clear()
+
+    def coord_point_passage_eolienne(self,i_eolienne,i_point):
+        """Donne la coordonné du ième point de passage autour d'une éolienne"""
+        if self.current_task < 2:
+            return self.l_graphe_eolienne[i_eolienne][0][i_point]
+        else:
+            return self.l_graphe_eolienne_critique[i_eolienne][0][i_point]
+
 
     def next_point(self):
         """
@@ -652,7 +583,6 @@ class WTENavigationNode(Node):
         Prend en compte les éoliennes déjà atteinte
         """
         #Si on est proche de l'eolienne qu'on veut atteindre, on y clear le chemin en cours pour aller au else
-        
         if self.dist(self.pos_aquabot,self.coordonnees_eoliennes[self.i_eolienne]) < 1.6*self.distance_point_passage_eolienne+self.tolerance_target_dist and len(self.l_chemin_en_cours_autour_eolienne) == 0:
             self.liste_chemin_en_cours.clear()
 
@@ -664,14 +594,13 @@ class WTENavigationNode(Node):
         # Si on est en train de faire le tour d'une eolienne, on continue
         if len(self.l_chemin_en_cours_autour_eolienne) > 0:
             i_point, i_eolien = self.l_chemin_en_cours_autour_eolienne[0]
-            if self.current_task < 2:
-                return self.l_graphe_eolienne[i_eolien][0][i_point],i_eolien
-            else:
-                return self.l_graphe_eolienne_critique[i_eolien][0][i_point],i_eolien
+            return self.coord_point_passage_eolienne(i_eolien,i_point),i_eolien
+        
         # Si on est en train de faire le tour d'un rocher, on continue
         elif len(self.liste_chemin_en_cours) != 0:
             i_point, i_eolien = self.liste_chemin_en_cours[0]
             return self.G[0][i_point],-1
+        
         #Sinon on recalcule le chemin.
         else:
             next_pos,indice_eolienne_si_eolienne = self.prochain_points_etape1()
@@ -768,16 +697,10 @@ class WTENavigationNode(Node):
             
             return graphe_de_eolienne_cible[chemin_autour_eolienne_sans_indice[0]],i_eolienne
 
-        
-        # Regarder la vitesse desire en fonctio nde la carte des distances
-
-        d_caillou = self.get_distance_caillou()
 
         # trouver un rayon de surveillance das lequel on veut attraper tout les rochers
         r = 100
-        if d_caillou < 125:
-            r = 100 #Rayon autour duquel on regarde les caillous :3
-
+        
         # Regarder la proximité des rochers autour du rayon
 
         V = self.G[0]
@@ -839,7 +762,7 @@ class WTENavigationNode(Node):
 
         indice_rocher_connecte_au_caillou = self.composante_connexe(self.G, indice_rocher_plus_proche_bateau)
         
-        self.get_logger().info(f"Rocher connecté au caillou : {indice_rocher_connecte_au_caillou}")
+        # self.get_logger().info(f"Rocher connecté au caillou : {indice_rocher_connecte_au_caillou}")
         
         coord_connecte_au_caillou = [self.G[0][i] for i in indice_rocher_connecte_au_caillou]
         # On met pos du premier poit a atteindre
@@ -866,7 +789,7 @@ class WTENavigationNode(Node):
 
     def optimise_chemin(self, composante_connexe, chemin_des_indices_parcouru_original,coord_depart, coord_arrive):
         """Optimise le chemin emprunté par le drone
-        /!\ EN DEVELOPPEMENT"""
+        """
 
         chemin_des_indices_parcouru = copy.deepcopy(chemin_des_indices_parcouru_original)
         
