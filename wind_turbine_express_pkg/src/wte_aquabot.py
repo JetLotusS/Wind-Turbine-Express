@@ -97,9 +97,9 @@ class WTEAquabotNode(Node):
     def chat_callback(self, msg):
         data = msg.data
         if data:
-            if data == "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !":
+            if data == "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !" and self.its_time_to_stabilise == False:
                 self.its_time_to_stabilise = True
-            self.get_logger().info(f"chat : {data}")
+                self.get_logger().info(f"chat : {data}")
 
 
     def pinger_callback(self, msg):
@@ -139,8 +139,8 @@ class WTEAquabotNode(Node):
         else:
             return
 
-        self.get_logger().info(f'pinger : bearing: {pinger_bearing}, range: {pinger_range}')
-        self.get_logger().info(f'critical_wind_turbine_x: {self.critical_wind_turbine_x}, critical_wind_turbine_y: {self.critical_wind_turbine_y}')
+        #self.get_logger().info(f'pinger : bearing: {pinger_bearing}, range: {pinger_range}')
+        #self.get_logger().info(f'critical_wind_turbine_x: {self.critical_wind_turbine_x}, critical_wind_turbine_y: {self.critical_wind_turbine_y}')
 
 
     def euler_from_quaternion(self, quaternion):
@@ -241,8 +241,8 @@ class WTEAquabotNode(Node):
         
         self.wind_turbines_coordinates = [eolienne_A_coordinate, eolienne_B_coordinate, eolienne_C_coordinate]
 
-        self.get_logger().info(f"wind_turbines_coordinates : {self.wind_turbines_coordinates}")
-        self.get_logger().info(f"wind_turbines_distance : {self.wind_turbines_distance}")
+        #self.get_logger().info(f"wind_turbines_coordinates : {self.wind_turbines_coordinates}")
+        #self.get_logger().info(f"wind_turbines_distance : {self.wind_turbines_distance}")
 
 
     def imu_callback(self, msg):
@@ -271,10 +271,11 @@ class WTEAquabotNode(Node):
 
 
     def navigation_callback(self):
+        """
+        Compute the speed and direction to give to the thruster driver \n
+        Receive a waypoint
+        """
 
-        """
-        ------------------------------- /!\ En developpement /!\ -------------------------------
-        """
         point_x = Float64()
         point_y = Float64()
         thruster_msg = Thruster()
@@ -284,27 +285,29 @@ class WTEAquabotNode(Node):
         point_y = self.nav_point_y
 
         if not self.wind_turbines_coordinates:
-            self.get_logger().warning("Wind turbine coordinates not available yet!")
+            #self.get_logger().warning("Wind turbine coordinates not available yet!")
             return
     
         eolienne_A_distance = self.xy_distance(self.wind_turbines_coordinates[0][0], self.wind_turbines_coordinates[0][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
         eolienne_B_distance = self.xy_distance(self.wind_turbines_coordinates[1][0], self.wind_turbines_coordinates[1][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
         eolienne_C_distance = self.xy_distance(self.wind_turbines_coordinates[2][0], self.wind_turbines_coordinates[2][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
 
+        # List of the distances between the aquabot and the wind turbines
         self.wind_turbines_distance = [eolienne_A_distance, eolienne_B_distance, eolienne_C_distance]
+        # Distance between the aquabot and the critical wind turbine
         self.critical_wind_turbines_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])
 
         if point_x == Float64(data=0.0) and point_y == Float64(data=0.0):
-            self.get_logger().warning("No point published yet!")
+            #self.get_logger().warning("No point published yet!")
             return
         
-        #self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
 
         goal_point_to_aquabot_distance = self.xy_distance(point_x, point_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1]) # m
 
         thruster_msg.x = point_x
         thruster_msg.y = point_y
         
+        # CAMERA CONTROLLER ----------------------------------------------------------------------------------------------------------------------
         # Compute the camera angle -> point the camera to the closest wind turbine
         closest_wind_turbine_dist = min(self.wind_turbines_distance[0], self.wind_turbines_distance[1], self.wind_turbines_distance[2])
         closest_wind_turbine_x_dist = (self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][0] - self.aquabot_coordinate[0])
@@ -313,9 +316,6 @@ class WTEAquabotNode(Node):
         # Avoid that closest_wind_turbine_x_dist > closest_wind_turbine_dist resulting in a NaN value from arcos dur to GPS drift
         if abs(closest_wind_turbine_x_dist/closest_wind_turbine_dist) > 1:
             closest_wind_turbine_x_dist = closest_wind_turbine_dist
-
-        #if self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][0] - self.aquabot_coordinate[0] < 0:
-        #    closest_wind_turbine_x_dist = - closest_wind_turbine_x_dist
         
         self.closest_winturbine_angle = np.arccos(closest_wind_turbine_x_dist/closest_wind_turbine_dist)
 
@@ -339,59 +339,87 @@ class WTEAquabotNode(Node):
             self.get_logger().warning("Invalid closest_winturbine_angle detected, skipping publish")
             #self.get_logger().warning(f"closest_wind_turbine_dist : {closest_wind_turbine_dist}")
             #self.get_logger().warning(f"self.aquabot_coordinate : {self.aquabot_coordinate}")
+        # END CAMERA CONTROLLER -------------------------------------------------------------------------------------------------------------------
 
-        if goal_point_to_aquabot_distance > 10.0:
-                   
-            # Speed PID Controller
-            speed_controller_error = goal_point_to_aquabot_distance
-            self.speed_controller_integral += speed_controller_error*self.timer_period
-            speed_controller_derivative = (speed_controller_error - self.speed_controller_previous_error)/self.timer_period
-            thruster_msg.speed = self.speed_controller_k_p*speed_controller_error + self.speed_controller_k_i*self.speed_controller_integral + self.speed_controller_k_d*speed_controller_derivative
+        if not self.its_time_to_stabilise:
+            # INSPECTION & RALLY
+            if goal_point_to_aquabot_distance > 5.0:
+                    
+                # Speed PID Controller
+                speed_controller_error = goal_point_to_aquabot_distance
+                self.speed_controller_integral += speed_controller_error*self.timer_period
+                speed_controller_derivative = (speed_controller_error - self.speed_controller_previous_error)/self.timer_period
+                thruster_msg.speed = self.speed_controller_k_p*speed_controller_error + self.speed_controller_k_i*self.speed_controller_integral + self.speed_controller_k_d*speed_controller_derivative
+                self.speed_controller_previous_error = speed_controller_error
+
+                #self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
+                #self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
+                #self.get_logger().info(f"p_a_xd: {point_x - self.aquabot_coordinate[0]}, p_a_yd: {goal_point_to_aquabot_distance}")
+                
+                # Calculate the angle between the boat yaw and the objective
+                thruster_msg.theta = np.arccos((point_x - self.aquabot_coordinate[0])/goal_point_to_aquabot_distance)
+
+                if point_y < self.aquabot_coordinate[1]:
+                    thruster_msg.theta = -thruster_msg.theta
+
+                #self.get_logger().info(f"thruster_msg.theta: {thruster_msg.theta}")
+
+                # Uptade aquabot_close_to_wind_turbine to True if the distance between the aquabot and a wind turbine is less than 40m
+                if self.wind_turbines_distance[0] < 50 or self.wind_turbines_distance[1] < 50 or self.wind_turbines_distance[2] < 50:
+                    self.aquabot_close_to_wind_turbine = True
+                else:
+                    self.aquabot_close_to_wind_turbine = False
+
+                if self.critical_wind_turbines_distance < 50:
+                    self.aquabot_close_to_critical_wind_turbine = True
+                else:
+                    self.aquabot_close_to_critical_wind_turbine = False
+
+                # Reduce speed if aquabot close to wind turbine
+                if self.aquabot_close_to_wind_turbine:
+                    thruster_msg.speed = thruster_msg.speed*0.5
+
+                # Reduce speed if aquabot close to critical wind turbine
+                if self.aquabot_close_to_critical_wind_turbine and self.current_task==3:
+                    thruster_msg.speed = thruster_msg.speed*0.2
+
+                thruster_msg.speed = thruster_msg.speed*(5000/6.17)
+                self.thruster_pub.publish(thruster_msg)
+                return
+
+            else:
+                thruster_msg.speed = 0.0
+                thruster_msg.theta = 0.0
+
+                self.thruster_pub.publish(thruster_msg)
+
+                #self.get_logger().info(f"Point ({point_x}, {point_y}) has been reached !")
+                return
+        else:
+            # STABILIZE
+            # critical wind turbine to aquabot distance needs to be 10m (+-1m)
+            cwt_to_aquabot_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])
+            self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
+
+            # Aquabot needs to point toward the critical wind turbine
+            cwt_orientation = np.arccos((self.critical_wind_turbine_x - self.aquabot_coordinate[0])/cwt_to_aquabot_distance)
+            if self.critical_wind_turbine_y < self.aquabot_coordinate[1]:
+                    cwt_orientation = -cwt_orientation
+
+            thruster_msg.theta = cwt_orientation
+
+            # Speed P Controller
+            speed_controller_error = (cwt_to_aquabot_distance - 10)
+
+            thruster_msg.speed = self.speed_controller_k_p*speed_controller_error
             self.speed_controller_previous_error = speed_controller_error
 
-            #self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
-            #self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
-            #self.get_logger().info(f"p_a_xd: {point_x - self.aquabot_coordinate[0]}, p_a_yd: {goal_point_to_aquabot_distance}")
-            
-            # Calculate the angle between the boat yaw and the objective
-            thruster_msg.theta = np.arccos((point_x - self.aquabot_coordinate[0])/goal_point_to_aquabot_distance)
-
-            if point_y < self.aquabot_coordinate[1]:
-                thruster_msg.theta = -thruster_msg.theta
-
-            #self.get_logger().info(f"thruster_msg.theta: {thruster_msg.theta}")
-
-            # Uptade aquabot_close_to_wind_turbine to True if the distance between the aquabot and a wind turbine is less than 40m
-            if self.wind_turbines_distance[0] < 40 or self.wind_turbines_distance[1] < 40 or self.wind_turbines_distance[2] < 40:
-                self.aquabot_close_to_wind_turbine = True
-            else:
-                self.aquabot_close_to_wind_turbine = False
-
-            if self.critical_wind_turbines_distance < 30:
-                self.aquabot_close_to_critical_wind_turbine = True
-            else:
-                self.aquabot_close_to_critical_wind_turbine = False
-
-            # Reduce speed if aquabot close to wind turbine
-            if self.aquabot_close_to_wind_turbine and (self.current_task==1 or self.current_task==2):
-                thruster_msg.speed = thruster_msg.speed*0.5
-
-            # Reduce speed if aquabot close to critical wind turbine
-            if self.aquabot_close_to_critical_wind_turbine and (self.current_task==3 or self.current_task==4):
-                thruster_msg.speed = thruster_msg.speed*0.2
-
+            thruster_msg.speed = thruster_msg.speed
             thruster_msg.speed = thruster_msg.speed*(5000/6.17)
+
+            self.get_logger().info(f"speed: {thruster_msg.speed}")
             self.thruster_pub.publish(thruster_msg)
 
-        else:
-            thruster_msg.speed = 0.0
-            thruster_msg.theta = 0.0
-
-            self.thruster_pub.publish(thruster_msg)
-
-            self.get_logger().info(f"Point ({point_x}, {point_y}) has been reached !")
-            return
-    
         
 def main(args=None):
     rclpy.init(args=args)

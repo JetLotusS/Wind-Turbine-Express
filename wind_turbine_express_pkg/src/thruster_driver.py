@@ -22,7 +22,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 from sensor_msgs.msg import NavSatFix, Imu
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, UInt32, String
 from wind_turbine_express_interfaces.msg import Thruster
 from rcl_interfaces.msg import SetParametersResult
 
@@ -41,7 +41,9 @@ class ThrusterNode(Node):
         self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10)
         self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10)
         self.cam_goal_pos_subscriber = self.create_subscription(Float64, '/aquabot/main_camera_sensor/goal_pose', self.cam_goal_pose_callback, 10)
-        
+        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
+        self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10)
+
         # Create publishers for thruster control
         self.left_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/thrust', 5, callback_group=self.reentrant_group)
         self.right_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/right/thrust', 5, callback_group=self.reentrant_group)
@@ -67,7 +69,9 @@ class ThrusterNode(Node):
 
         # Daclare Aquabot variables
         self.aquabot_coordinate = []
-        
+        self.current_task = 1
+        self.its_time_to_stabilise = False
+
         # Declare thruster variables
         self.thruster_speed = 0.0
         self.yaw = Float64()
@@ -80,6 +84,8 @@ class ThrusterNode(Node):
 
         self.x_goal_pose = Float64()
         self.y_goal_pose = Float64()
+        self.prev_x_goal_pose = Float64()
+        self.prev_y_goal_pose = Float64()
         self.yaw_goal_pose = Float64()
         self.thruster_goal_speed = Float64()
 
@@ -91,7 +97,7 @@ class ThrusterNode(Node):
 
         self.declare_parameter('kp', 0.1)
         self.declare_parameter('ki', 0.01)
-        self.declare_parameter('kd', 0.0)
+        self.declare_parameter('kd', 0.002)
 
         self.direction_controller_k_p = self.get_parameter('kp').get_parameter_value().double_value
         self.direction_controller_k_i = self.get_parameter('ki').get_parameter_value().double_value
@@ -101,6 +107,8 @@ class ThrusterNode(Node):
         self.direction_controller_integral = 0.0
         self.thruster_turn_angle = 0.0
         
+        self.stabilisation_speed_controller_k_p = 100.0
+
         # Declare camera variable
 
         self.camera_angle = 0.0
@@ -191,6 +199,21 @@ class ThrusterNode(Node):
         return distance
 
 
+    def current_phase_callback(self, msg):
+        """
+        Get the current task number
+        """
+        self.current_task = msg.data
+
+
+    def chat_callback(self, msg):
+        data = msg.data
+        if data:
+            if data == "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !" and self.its_time_to_stabilise == False:
+                self.its_time_to_stabilise = True
+                self.get_logger().info(f"STABILIZE")
+
+
     def gps_callback(self, msg):
         """
         Receives aquabot's latitude and longitude coordinates and converts them into cartesian coordinates
@@ -256,26 +279,31 @@ class ThrusterNode(Node):
         
 
     def driver_callback(self):
-        
-        '''
-        ------------------------------- /!\ En developpement /!\ -------------------------------
-        '''
+        """
+        Publish to the aquabot thruster and camera thruster
+        """
 
         if self.x_goal_pose == Float64(data=0.0) and self.y_goal_pose == Float64(data=0.0):
-            self.get_logger().warning("No goal received yet!")
+            #self.get_logger().warning("No goal received yet!")
             return
 
+        # Reset the integral part of the direction PID controller when the goal point change
+        #if self.prev_x_goal_pose != self.x_goal_pose and self.prev_y_goal_pose != self.y_goal_pose:
+        #    self.direction_controller_integral = 0.0
+
+        #self.prev_x_goal_pose == self.x_goal_pose
+        #self.prev_y_goal_pose == self.y_goal_pose
+
         if np.isnan(self.yaw_goal_pose):
-            self.get_logger().warning("yaw_goal_pose nan")
+            #self.get_logger().warning("yaw_goal_pose nan")
             return
         
         #self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
-        #self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, self.yaw: {self.yaw}")
 
         turn_limit = 0.78539816339
         speed_limit = 5000.0
 
-        # Direction PID controller
+        # Direction PID controller -------------------------------------------------------------------------------------------------------------------------
         direction_controller_error = - (self.yaw_goal_pose - self.yaw)
 
         if np.abs(direction_controller_error) > np.pi:
@@ -284,38 +312,55 @@ class ThrusterNode(Node):
             else:
                 direction_controller_error += 2*np.pi
 
-        self.direction_controller_integral += direction_controller_error*self.timer_period
-        direction_controller_derivative = (direction_controller_error - self.direction_controller_previous_error)/self.timer_period
+        if not self.its_time_to_stabilise:
+            self.direction_controller_integral += direction_controller_error*self.timer_period
+            direction_controller_derivative = (direction_controller_error - self.direction_controller_previous_error)/self.timer_period
+            self.thruster_turn_angle = self.direction_controller_k_p*direction_controller_error + self.direction_controller_k_i*self.direction_controller_integral + self.direction_controller_k_d*direction_controller_derivative
+            self.direction_controller_previous_error = direction_controller_error
+        else:
+            self.thruster_turn_angle = np.pi/4
+            turning_speed_for_stabilisation = self.stabilisation_speed_controller_k_p*direction_controller_error
+            self.get_logger().info(f"self.thruster_turn_angle {self.thruster_turn_angle}")
         
-        self.thruster_turn_angle = self.direction_controller_k_p*direction_controller_error + self.direction_controller_k_i*self.direction_controller_integral + self.direction_controller_k_d*direction_controller_derivative
+        # END Direction PID controller ---------------------------------------------------------------------------------------------------------------------
 
         #self.get_logger().info(f"thruster_turn_angle: {self.thruster_turn_angle}")
-        #self.get_logger().info(f"direction_controller_error: {direction_controller_error}")
-        #self.get_logger().info(f"direction_controller_integral: {self.direction_controller_integral}")
-        #self.get_logger().info(f"direction_controller_derivative: {direction_controller_derivative}")
-
-
-        self.direction_controller_previous_error = direction_controller_error
+        #self.get_logger().info(f"direction_controller_error: {self.direction_controller_k_p*direction_controller_error}")
+        #self.get_logger().info(f"direction_controller_integral: {self.direction_controller_k_i*self.direction_controller_integral}")
+        #self.get_logger().info(f"direction_controller_derivative: {self.direction_controller_k_d*direction_controller_derivative}")
 
         #self.thruster_speed = self.thruster_speed/((1+np.abs(direction_controller_error))**8)
+        #self.get_logger().info(f"self.thruster_speed: {self.thruster_speed})"
+        
+        # Speed adjustment
+        #self.thruster_speed = min(speed_limit, np.abs(self.thruster_goal_speed))
+        self.thruster_speed = self.thruster_goal_speed
+
         #self.get_logger().info(f"self.thruster_speed: {self.thruster_speed}")
-
-        self.thruster_speed = min(speed_limit, np.abs(self.thruster_goal_speed))
-
-        # Camera proportional controller
+                               
+        # Camera P controller -------------------------------------------------------------------------------------------------------------------------
         cam_msg = Float64()
         camera_angle_error = self.cam_goal_pose - self.camera_tf_angle
         self.camera_angle += camera_angle_error*self.camera_controller_k_p
         cam_msg.data = float(self.camera_angle)
+        # END Camera P controller -------------------------------------------------------------------------------------------------------------------------
 
-        if self.thruster_goal_speed < 0:
-            self.thruster_speed = - self.thruster_speed
+        #self.get_logger().info(f"thruster_turn_angle: {self.thruster_turn_angle}")
 
-        self.left_speed = self.thruster_speed
-        self.right_speed = self.thruster_speed
-        
-        self.left_turn = self.thruster_turn_angle
-        self.right_turn = self.thruster_turn_angle
+        if not self.its_time_to_stabilise:
+            self.left_speed = self.thruster_speed
+            self.right_speed = self.thruster_speed
+
+            self.left_turn = self.thruster_turn_angle
+            self.right_turn = self.thruster_turn_angle
+        else:
+            self.left_speed = self.thruster_speed + turning_speed_for_stabilisation
+            self.right_speed = self.thruster_speed - turning_speed_for_stabilisation
+
+            self.left_turn = self.thruster_turn_angle
+            self.right_turn = -self.thruster_turn_angle
+
+        self.get_logger().info(f"left_turn {self.left_turn}, right_turn {self.right_turn}")
 
         left_speed_msg = Float64()
         left_turn_msg = Float64()
