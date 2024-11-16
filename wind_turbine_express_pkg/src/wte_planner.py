@@ -136,7 +136,7 @@ class WTENavigationNode(Node):
             # self.get_logger().info(f"Windturbine coordinates : {self.coordonnees_eoliennes}")
 
 
-        next_pos = None
+        Point_objectif_bateau = None
         if self.current_task >= 3:
             point_a_atteindre = self.moyenne_liste_coord(self.positions_eolienne_scanne[self.i_eolienne])
             vect_eolienne_point = self.add_vect(point_a_atteindre,self.mul_vect(self.coordonnees_eoliennes[self.i_eolienne],-1))
@@ -154,24 +154,23 @@ class WTENavigationNode(Node):
                 msg.data = "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !"
                 self.chat_pub.publish(msg)
 
-        if not self.PHASE_STABILISATION_ENCLENCHEE:
-            if self.eoliennes_data_initialisee:
-                next_pos, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
-            else:
-                # self.get_logger().info("Données par encore initialisée")
-                next_pos = (0,0)
 
+        if self.eoliennes_data_initialisee:
+            Point_objectif_bateau, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
+        else:
+            # self.get_logger().info("Données par encore initialisée")
+            Point_objectif_bateau = (0,0)
+
+        if self.PHASE_STABILISATION_ENCLENCHEE:
+            self.get_logger().info("[STABILISATION] next_pos published : ")
+        else:
+            self.get_logger().info("[NORMAL PUB] next_pos published : ")
+        self.get_logger().info(f"x : {Point_objectif_bateau[0]} y : {Point_objectif_bateau[1]}")
+        nav_msg = Thruster() 
+        nav_msg.x = float(Point_objectif_bateau[0])
+        nav_msg.y = float(Point_objectif_bateau[1])
+        self.navigation.publish(nav_msg)
         
-        if not self.PHASE_STABILISATION_ENCLENCHEE:
-            prochaine_coord_bateau = next_pos
-
-            Point_objectif_bateau = [prochaine_coord_bateau[0],prochaine_coord_bateau[1]] 
-            nav_msg = Thruster() 
-            nav_msg.x = float(Point_objectif_bateau[0])
-            nav_msg.y = float(Point_objectif_bateau[1])
-            # self.get_logger().info("next_pos published : ")
-            # self.get_logger().info(f"x : {next_pos[0]} y : {next_pos[1]}")
-            self.navigation.publish(nav_msg)
 
     def ais_callback(self, msg):
         """Met a jour les coordonnées des éoliennes\n
