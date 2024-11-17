@@ -13,8 +13,7 @@
 # limitations under the License.
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
@@ -22,9 +21,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    ld = LaunchDescription()
 
-    default_world_name = 'aquabot_windturbines_easy'
+    default_world_name = 'aquabot_windturbines_medium'
     #aquabot_regatta
     #aquabot_windturbines_easy
     #aquabot_windturbines_medium
@@ -33,7 +31,6 @@ def generate_launch_description():
             'world',
             default_value = default_world_name,
             description = 'World name')
-    ld.add_action(world_arg)
 
     aquabot_competition_launch_file = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -60,10 +57,22 @@ def generate_launch_description():
         output="screen",
     )
 
-    ld.add_action(world_arg)
-    ld.add_action(aquabot_competition_launch_file)
-    ld.add_action(navigation_node)
-    ld.add_action(thruster_driver_node)
-    ld.add_action(cv_node)
-
-    return ld
+    planner_node = Node(
+        package="wind_turbine_express_pkg",
+        executable="wte_planner.py",
+        output="screen",
+    )
+    
+    return LaunchDescription([
+        world_arg,
+        aquabot_competition_launch_file,
+        TimerAction(
+            period=10.0,  # Delay in seconds
+            actions=[
+                navigation_node,
+                thruster_driver_node,
+                cv_node,
+                planner_node,
+            ]
+        ),
+    ])

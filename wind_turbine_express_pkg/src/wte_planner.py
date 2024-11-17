@@ -16,6 +16,8 @@
 
 import math
 import rclpy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
 import numpy as np
 import os
 import copy
@@ -33,18 +35,20 @@ class WTENavigationNode(Node):
 
         self.get_logger().info("Début d'initialisation.")
 
+        self.reentrant_group = ReentrantCallbackGroup()
+
         #Publisher et Subscriber
-        self.navigation = self.create_publisher(Thruster, '/aquabot/navigation/point', 10)
-        self.chat_pub = self.create_publisher(String, '/aquabot/chat', 5)
-        self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10)
-        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
-        self.checkup_subscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10)
-        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
-        self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10)
+        self.navigation = self.create_publisher(Thruster, '/aquabot/navigation/point', 10, callback_group=self.reentrant_group)
+        self.chat_pub = self.create_publisher(String, '/aquabot/chat', 5, callback_group=self.reentrant_group)
+        self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10, callback_group=self.reentrant_group)
+        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10, callback_group=self.reentrant_group)
+        self.checkup_subscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10, callback_group=self.reentrant_group)
+        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10, callback_group=self.reentrant_group)
+        self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10, callback_group=self.reentrant_group)
 
         # Publisher
         timer_period = 0.25  # seconds
-        self.timer = self.create_timer(timer_period, self.nav_point_callback)
+        self.timer = self.create_timer(timer_period, self.nav_point_callback, callback_group=self.reentrant_group)
         
         self.aquabot_coordinate = []
         self.wind_turbines_coordinates = []
@@ -95,7 +99,7 @@ class WTENavigationNode(Node):
         
         # Paramètres de la navigation.
 
-        self.distance_point_passage_eolienne_CRITIQUE = 20 # Distance des points de passage autour de l'éolienne en état critique.
+        self.distance_point_passage_eolienne_CRITIQUE = 15 # Distance des points de passage autour de l'éolienne en état critique.
         self.distance_point_passage_eolienne = 14 # Distance des points de passage autour des éolienne lors de la phase 1
         
         self.tolerance_target_dist = 15 # Distance de tolérance à partir duquel on considère que les points sont atteints.
@@ -124,17 +128,19 @@ class WTENavigationNode(Node):
         # self.get_logger().info("NAV CALLBAKCK CALLED")
         # self.get_logger().info(f"chemin eolienne en cours : {self.l_chemin_en_cours_autour_eolienne}")
         # self.get_logger().info(f"chemin rocher en cours : {self.liste_chemin_en_cours}")
-        self.get_logger().info(f"PHASE ACTUELLE : {self.current_task}")
-        self.get_logger().info(f"EOLIENNES SCANNEES : {self.eolienne_scanne}")
+        # self.get_logger().info(f"PHASE ACTUELLE : {self.current_task}")
+        # self.get_logger().info(f"EOLIENNES SCANNEES : {self.eolienne_scanne}")
         if self.PHASE_STABILISATION_ENCLENCHEE:
-            self.get_logger().info(f"PHASE DE STABILISATION ENCLENCHEE")
+            pass
+            # self.get_logger().info(f"PHASE DE STABILISATION ENCLENCHEE")
 
         if self.critical_wind_turbine_coordinates_calculated and not self.PHASE_STABILISATION_ENCLENCHEE:
-            self.get_logger().info(f"Critical Windturbine coordinates : {self.critical_windturbine_coordinates}")
-            self.get_logger().info(f"Windturbine coordinates : {self.coordonnees_eoliennes}")
+            pass
+            # self.get_logger().info(f"Critical Windturbine coordinates : {self.critical_windturbine_coordinates}")
+            # self.get_logger().info(f"Windturbine coordinates : {self.coordonnees_eoliennes}")
 
 
-        next_pos = None
+        Point_objectif_bateau = None
         if self.current_task >= 3:
             point_a_atteindre = self.moyenne_liste_coord(self.positions_eolienne_scanne[self.i_eolienne])
             vect_eolienne_point = self.add_vect(point_a_atteindre,self.mul_vect(self.coordonnees_eoliennes[self.i_eolienne],-1))
@@ -147,31 +153,27 @@ class WTENavigationNode(Node):
                     nav_msg.y = float(Point_objectif_bateau[1])
                     self.navigation.publish(nav_msg)
                 self.PHASE_STABILISATION_ENCLENCHEE = True
-                self.get_logger().info("POINT ATTEINT, ENCLENCHER STABILISATION")
+                # self.get_logger().info("POINT ATTEINT, ENCLENCHER STABILISATION")
                 msg = String()
                 msg.data = "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !"
                 self.chat_pub.publish(msg)
-                #On publie la position de l'éolienne... O_O
-                next_pos = point_a_atteindre
 
-        if not self.PHASE_STABILISATION_ENCLENCHEE:
-            if self.eoliennes_data_initialisee:
-                next_pos, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
-            else:
-                self.get_logger().info("Données par encore initialisée")
-                next_pos = (0,0)
 
-        
-        if not self.PHASE_STABILISATION_ENCLENCHEE:
-            prochaine_coord_bateau = next_pos
+        if self.eoliennes_data_initialisee:
+            Point_objectif_bateau, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
+        else:
+            # self.get_logger().info("Données par encore initialisée")
+            Point_objectif_bateau = (0,0)
 
-            Point_objectif_bateau = [prochaine_coord_bateau[0],prochaine_coord_bateau[1]] 
-            nav_msg = Thruster() 
-            nav_msg.x = float(Point_objectif_bateau[0])
-            nav_msg.y = float(Point_objectif_bateau[1])
-            self.get_logger().info("next_pos published : ")
-            self.get_logger().info(f"x : {next_pos[0]} y : {next_pos[1]}")
-            self.navigation.publish(nav_msg)
+        if self.PHASE_STABILISATION_ENCLENCHEE:
+            self.get_logger().info("[STABILISATION] next_pos published : ")
+        else:
+            self.get_logger().info("[NORMAL PUB] next_pos published : ")
+        self.get_logger().info(f"x : {Point_objectif_bateau[0]} y : {Point_objectif_bateau[1]}")
+        nav_msg = Thruster() 
+        nav_msg.x = float(Point_objectif_bateau[0])
+        nav_msg.y = float(Point_objectif_bateau[1])
+        self.navigation.publish(nav_msg)
 
     def ais_callback(self, msg):
         """Met a jour les coordonnées des éoliennes
@@ -248,9 +250,7 @@ class WTENavigationNode(Node):
         Get the current task number
         """
         self.current_task = msg.data
-        if self.current_task == 3:
-            self.tolerance_target_dist = 2.0
-        self.get_logger().info(f'current_task: {self.current_task}')
+        #self.get_logger().info(f'current_task: {self.current_task}')
 
     def critical_wind_turbine_callback(self, msg):
         self.critical_windturbine_coordinates = (msg.x,msg.y)
@@ -905,9 +905,13 @@ class WTENavigationNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     wte_navigation_node = WTENavigationNode()
-    rclpy.spin(wte_navigation_node)
-    wte_navigation_node.destroy_node()
-    rclpy.shutdown()
+    executor = MultiThreadedExecutor(num_threads=8)
+    executor.add_node(wte_navigation_node)
+    try:
+        executor.spin()
+    finally:
+        wte_navigation_node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

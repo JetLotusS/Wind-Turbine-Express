@@ -41,6 +41,7 @@ class ThrusterNode(Node):
         self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10)
         self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10)
         self.cam_goal_pos_subscriber = self.create_subscription(Float64, '/aquabot/main_camera_sensor/goal_pose', self.cam_goal_pose_callback, 10)
+        self.qr_code_goal_pose_subscriber = self.create_subscription(Float64, '/aquabot/stabilisation/goal_pose', self.stabilisation_goal_orientation_callback, 10)
         self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
         self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10)
 
@@ -71,7 +72,7 @@ class ThrusterNode(Node):
         self.aquabot_coordinate = []
         self.current_task = 1
         self.its_time_to_stabilise = False
-
+        self.qr_code_goal_pose = None
         # Declare thruster variables
         self.thruster_speed = 0.0
         self.yaw = Float64()
@@ -88,7 +89,7 @@ class ThrusterNode(Node):
         self.prev_y_goal_pose = Float64()
         self.yaw_goal_pose = Float64()
         self.thruster_goal_speed = Float64()
-
+        
         # GPS coordinates of the center
         self.origine_latitude = 48.04630
         self.origine_longitude = -4.97632
@@ -245,6 +246,13 @@ class ThrusterNode(Node):
         #self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, thruster_goal_speed: {self.thruster_goal_speed}")
 
 
+    def stabilisation_goal_orientation_callback(self, msg):
+        """
+        Receive the correct orientation to face the QR code during the stabilisation phase
+        """
+        self.qr_code_goal_pose = msg.data
+
+
     def cam_goal_pose_callback(self, msg):
         """
         Receives camera goal position
@@ -354,7 +362,21 @@ class ThrusterNode(Node):
             self.left_turn = self.thruster_turn_angle
             self.right_turn = self.thruster_turn_angle
         else:
-            self.left_speed = self.thruster_speed + turning_speed_for_stabilisation
+
+            if self.qr_code_goal_pose is None:
+                self.get_logger().warning("No QR code goal pose received yet. Skipping stabilisation.")
+                return
+            
+            stabilisation_direction_error = (self.qr_code_goal_pose - self.yaw)
+            if np.abs(stabilisation_direction_error) > np.pi:
+                if stabilisation_direction_error > 0:
+                    stabilisation_direction_error -= 2*np.pi
+                else:
+                    stabilisation_direction_error += 2*np.pi
+
+            speed_for_lateral_movement = stabilisation_direction_error*10
+
+            self.left_speed = self.thruster_speed + turning_speed_for_stabilisation + speed_for_lateral_movement
             self.right_speed = self.thruster_speed - turning_speed_for_stabilisation
 
             self.left_turn = self.thruster_turn_angle
