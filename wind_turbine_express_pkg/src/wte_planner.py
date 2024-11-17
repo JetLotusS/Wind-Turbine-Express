@@ -117,59 +117,51 @@ class WTENavigationNode(Node):
 
         return x,y
 
+    def publier_coord_bateau(self,pos,msg):
+        self.get_logger().info(f"[{msg}] : ({round(pos[0],2)},{round(pos[1],2)})")
+        nav_msg = Thruster() 
+        nav_msg.x = float(pos[0])
+        nav_msg.y = float(pos[1])
+        self.navigation.publish(nav_msg)  
+
+    def coord_critique_qr_code(self):
+        point_a_atteindre = self.moyenne_liste_coord(self.positions_eolienne_scanne[self.critical_windturbine_idx])
+        # vect_eolienne_point = self.add_vect(point_a_atteindre,self.mul_vect(self.coordonnees_eoliennes[self.critical_windturbine_idx],-1))
+        # vect_eolienne_point = self.mul_vect(vect_eolienne_point,self.distance_point_passage_eolienne_CRITIQUE/self.norme_vecteur(vect_eolienne_point))
+        # On ne scale pas le point a atteindre pour éviter des bugs de maths mais ca fonctionne normalement
+        return point_a_atteindre
+
     def nav_point_callback(self):
         """
         Publie la prochaine position a atteindre par le bateau
         """
-        # self.get_logger().info("NAV CALLBAKCK CALLED")
-        # self.get_logger().info(f"chemin eolienne en cours : {self.l_chemin_en_cours_autour_eolienne}")
-        # self.get_logger().info(f"chemin rocher en cours : {self.liste_chemin_en_cours}")
-        # self.get_logger().info(f"PHASE ACTUELLE : {self.current_task}")
-        # self.get_logger().info(f"EOLIENNES SCANNEES : {self.eolienne_scanne}")
-        if self.PHASE_STABILISATION_ENCLENCHEE:
-            pass
-            # self.get_logger().info(f"PHASE DE STABILISATION ENCLENCHEE")
 
-        if self.critical_wind_turbine_coordinates_calculated and not self.PHASE_STABILISATION_ENCLENCHEE:
-            pass
-            # self.get_logger().info(f"Critical Windturbine coordinates : {self.critical_windturbine_coordinates}")
-            # self.get_logger().info(f"Windturbine coordinates : {self.coordonnees_eoliennes}")
+        if self.PHASE_STABILISATION_ENCLENCHEE: # Si la phase de stabilisation a été enclenché : On renvoie la position a atteindre
+            Point_objectif_bateau = self.coord_critique_qr_code()
+            self.publier_coord_bateau(Point_objectif_bateau,"STABILISATION EN COURS")     
 
-
-        Point_objectif_bateau = None
-        if self.current_task >= 3:
-            point_a_atteindre = self.moyenne_liste_coord(self.positions_eolienne_scanne[self.i_eolienne])
-            vect_eolienne_point = self.add_vect(point_a_atteindre,self.mul_vect(self.coordonnees_eoliennes[self.i_eolienne],-1))
-            vect_eolienne_point = self.mul_vect(vect_eolienne_point,self.distance_point_passage_eolienne_CRITIQUE/self.norme_vecteur(vect_eolienne_point))
-            if self.dist(point_a_atteindre,self.pos_aquabot) < self.tolerance_target_dist:
-                if not self.PHASE_STABILISATION_ENCLENCHEE:
-                    Point_objectif_bateau = self.pos_aquabot
-                    nav_msg = Thruster() 
-                    nav_msg.x = float(Point_objectif_bateau[0])
-                    nav_msg.y = float(Point_objectif_bateau[1])
-                    self.navigation.publish(nav_msg)
+        elif self.current_task >= 2 and self.critical_wind_turbine_coordinates_calculated: # On doit se diriger vers l'éolienne en détresse et si on est proche activer la phase de stabilisation et publier le point a atteindre
+            Point_objectif_bateau = self.coord_critique_qr_code()
+            if self.dist(Point_objectif_bateau,self.pos_aquabot) < self.tolerance_target_dist: # On est proche du point a atteindre et on a pas encore stabilisé.
+                self.get_logger().info("ENCLENCHER STABILISATION ! ")
                 self.PHASE_STABILISATION_ENCLENCHEE = True
-                # self.get_logger().info("POINT ATTEINT, ENCLENCHER STABILISATION")
                 msg = String()
                 msg.data = "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !"
                 self.chat_pub.publish(msg)
+                self.publier_coord_bateau(Point_objectif_bateau,"STABILISATION ENCLENCHEE A LINSTANT")  
+            
+            else: # On est pas assez proche et on continue de se diriger vers l'éolienne
+                Point_objectif_bateau, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
+                self.publier_coord_bateau(Point_objectif_bateau,"GO_TO_STABILISATION")
+                
+        else: # On est pas a la phase 2 ou + donc on s'en fiche
+            if self.eoliennes_data_initialisee:
+                Point_objectif_bateau, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
+            else:
+                # self.get_logger().info("Données par encore initialisée")
+                Point_objectif_bateau = (0,0)
 
-
-        if self.eoliennes_data_initialisee:
-            Point_objectif_bateau, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
-        else:
-            # self.get_logger().info("Données par encore initialisée")
-            Point_objectif_bateau = (0,0)
-
-        if self.PHASE_STABILISATION_ENCLENCHEE:
-            self.get_logger().info("[STABILISATION] next_pos published : ")
-        else:
-            self.get_logger().info("[NORMAL PUB] next_pos published : ")
-        self.get_logger().info(f"x : {Point_objectif_bateau[0]} y : {Point_objectif_bateau[1]}")
-        nav_msg = Thruster() 
-        nav_msg.x = float(Point_objectif_bateau[0])
-        nav_msg.y = float(Point_objectif_bateau[1])
-        self.navigation.publish(nav_msg)
+            self.publier_coord_bateau(Point_objectif_bateau,"NORMAL PUB")
         
 
     def ais_callback(self, msg):
@@ -470,45 +462,24 @@ class WTENavigationNode(Node):
         pos_eolienne = (pos_eolienne[0], pos_eolienne[1])
         V = 0
         E = 1
+        
+        #On génère les coordonnées autour de l'éolienne.
         c_off_eolienne = self.coord_autour(pos_eolienne, est_critique)
 
         for i in range(len(c_off_eolienne)):
             coord_decalee = c_off_eolienne[i]
-
+            #On ajoute les coordonnées des points au graphe
             G[V].append(coord_decalee)
             G[E].append([])
 
         for i in range(len(c_off_eolienne)):
-            n = len(G[V])
             coord_decalee = c_off_eolienne[i]
-
-            plus_proche = -1
-            d1 = 999999999
-            deux_proche = -1
-            d2 = 999999999
-            for j in range(n):
-                if i == j:
-                    continue
-                c2 = G[V][j]
-
-                d = self.dist(coord_decalee, c2)
-                if d < max(d1, d2):
-
-                    if d < d1:
-                        tempd1 = d1
-                        tempi1 = plus_proche
-                        plus_proche = j
-                        d1 = d
-                        if tempd1 < d2:
-                            d2 = tempd1
-                            deux_proche = tempi1
-
-                    elif d < d2:
-                        d2 = d
-                        deux_proche = j
-
-            G[E][i].append(plus_proche)
-            G[E][i].append(deux_proche)
+            #On trie les points autour en fonction de la distance au point qu'on regarde actuellement
+            d_au_eolienne = [(self.dist(coord_decalee,c_off_eolienne[k]),k) for k in range(len(c_off_eolienne))]
+            d_au_eolienne.sort()
+            #Le point autour del 'éolienne est reliée aux deux points les plus proches d'eux.
+            G[E][i].append(d_au_eolienne[1][1])
+            G[E][i].append(d_au_eolienne[2][1])
 
     def genere_graphe_eolienne(self,l_eolienne,est_critique):
         """
