@@ -20,6 +20,8 @@ import numpy as np
 import os
 import copy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
 from wind_turbine_express_interfaces.msg import Thruster
 from geometry_msgs.msg import PoseArray
 from sensor_msgs.msg import NavSatFix
@@ -33,14 +35,16 @@ class WTENavigationNode(Node):
 
         self.get_logger().info("WTE_planner : Début d'initialisation.")
 
+        self.reentrant_group = ReentrantCallbackGroup()
+
         #Publisher et Subscriber
-        self.navigation = self.create_publisher(Thruster, '/aquabot/navigation/point', 10)
-        self.chat_pub = self.create_publisher(String, '/aquabot/chat', 5)
-        self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10)
-        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
-        self.checkup_subscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10)
-        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
-        self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10)
+        self.navigation = self.create_publisher(Thruster, '/aquabot/navigation/point', 10, callback_group=self.reentrant_group)
+        self.chat_pub = self.create_publisher(String, '/aquabot/chat', 5, callback_group=self.reentrant_group)
+        self.ais_subscriber = self.create_subscription(PoseArray, '/aquabot/ais_sensor/windturbines_positions', self.ais_callback, 10, callback_group=self.reentrant_group)
+        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10, callback_group=self.reentrant_group)
+        self.checkup_subscriber = self.create_subscription(String, '/vrx/windturbinesinspection/windturbine_checkup', self.wind_turbine_checkup_callback, 10, callback_group=self.reentrant_group)
+        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10, callback_group=self.reentrant_group)
+        self.critical_wind_turbine_subscriber = self.create_subscription(Thruster, '/aquabot/critical_wind_turbine_coordinates', self.critical_wind_turbine_callback, 10, callback_group=self.reentrant_group)
 
         # Publisher
         timer_period = 0.25  # seconds
@@ -239,8 +243,8 @@ class WTENavigationNode(Node):
         Get the current task number
         """
         self.current_task = msg.data
-        if self.current_task == 3:
-            self.tolerance_target_dist = 5
+        #if self.current_task == 3:
+        #    self.tolerance_target_dist = 5
         # self.get_logger().info(f'current_task: {self.current_task}')
 
     def critical_wind_turbine_callback(self, msg):
@@ -874,9 +878,15 @@ class WTENavigationNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     wte_navigation_node = WTENavigationNode()
-    rclpy.spin(wte_navigation_node)
-    wte_navigation_node.destroy_node()
-    rclpy.shutdown()
+
+    executor = MultiThreadedExecutor(num_threads=8)
+    executor.add_node(wte_navigation_node)
+
+    try:
+        executor.spin()
+    finally:
+        wte_navigation_node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

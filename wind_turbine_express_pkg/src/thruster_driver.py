@@ -37,13 +37,13 @@ class ThrusterNode(Node):
 
         self.reentrant_group = ReentrantCallbackGroup()
 
-        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
-        self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10)
-        self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10)
-        self.cam_goal_pos_subscriber = self.create_subscription(Float64, '/aquabot/main_camera_sensor/goal_pose', self.cam_goal_pose_callback, 10)
-        self.qr_code_goal_pose_subscriber = self.create_subscription(Float64, '/aquabot/stabilisation/goal_pose', self.stabilisation_goal_orientation_callback, 10)
-        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
-        self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10)
+        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10, callback_group=self.reentrant_group)
+        self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10, callback_group=self.reentrant_group)
+        self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10, callback_group=self.reentrant_group)
+        self.cam_goal_pos_subscriber = self.create_subscription(Float64, '/aquabot/main_camera_sensor/goal_pose', self.cam_goal_pose_callback, 10, callback_group=self.reentrant_group)
+        self.qr_code_goal_pose_subscriber = self.create_subscription(Float64, '/aquabot/stabilisation/goal_pose', self.stabilisation_goal_orientation_callback, 10, callback_group=self.reentrant_group)
+        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10, callback_group=self.reentrant_group)
+        self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10, callback_group=self.reentrant_group)
 
         # Create publishers for thruster control
         self.left_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/thrust', 5, callback_group=self.reentrant_group)
@@ -460,12 +460,9 @@ class ThrusterNode(Node):
             if abs(direction_controller_error) < stabilisation_tolerence_angle and np.abs(self.left_engine_tf_angle) < 0.23 and np.abs(self.right_engine_tf_angle) < 0.23:
                 self.left_speed = self.thruster_speed + speed_for_lateral_movement
                 self.right_speed = self.thruster_speed - speed_for_lateral_movement
-            elif np.abs(self.left_engine_tf_angle) > 0.75 and np.abs(self.right_engine_tf_angle) > 0.75 :
+            else:
                 self.left_speed = self.thruster_speed - turning_speed_for_stabilisation
                 self.right_speed = self.thruster_speed + turning_speed_for_stabilisation
-            else:
-                self.left_speed = self.thruster_speed
-                self.right_speed = self.thruster_speed
 
 
 

@@ -39,12 +39,11 @@ class WTEAquabotNode(Node):
         self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/navigation/point', self.get_point_callback, 10, callback_group=self.reentrant_group)
         self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10, callback_group=self.reentrant_group)
         self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10)
-        self.score_subscriber = self.create_subscription(ParamVec, '/vrx/task/info', self.score_callback, 10)
 
-        self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5)
-        self.cam_goal_pos_pub = self.create_publisher(Float64, '/aquabot/main_camera_sensor/goal_pose', 5)
-        self.qr_code_goal_pose_pub = self.create_publisher(Float64, '/aquabot/stabilisation/goal_pose', 5)
-        self.critical_wind_turbine_pub = self.create_publisher(Thruster, '/aquabot/critical_wind_turbine_coordinates', 5)
+        self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5, callback_group=self.reentrant_group)
+        self.cam_goal_pos_pub = self.create_publisher(Float64, '/aquabot/main_camera_sensor/goal_pose', 5,callback_group=self.reentrant_group)
+        self.qr_code_goal_pose_pub = self.create_publisher(Float64, '/aquabot/stabilisation/goal_pose', 5, callback_group=self.reentrant_group)
+        self.critical_wind_turbine_pub = self.create_publisher(Thruster, '/aquabot/critical_wind_turbine_coordinates', 5, callback_group=self.reentrant_group)
 
         # Create a timer that will call the timer_callback function every 100ms
         self.timer_period = 0.1  # seconds
@@ -79,7 +78,7 @@ class WTEAquabotNode(Node):
         self.wind_turbines_distance = []
 
         #Speed PID Controller variables
-        self.speed_controller_k_p = 0.15
+        self.speed_controller_k_p = 0.10
         self.speed_controller_k_i = 0.001
         self.speed_controller_k_d = 0.0
         self.speed_controller_previous_error = 0.0
@@ -100,16 +99,6 @@ class WTEAquabotNode(Node):
         """
         self.current_task = msg.data
         self.get_logger().info(f'current_task: {self.current_task}')
-
-
-    def score_callback(self, msg):
-        """
-        Get the current score
-        """
-        for param in msg.params:
-            if param.name == "score":
-                self.score = param.value.double_value
-                self.get_logger().info(f'SCORE : {self.score}')
 
 
     def chat_callback(self, msg):
