@@ -32,4 +32,14 @@ In cmd #1
 ```bash
 ros2 launch wind_turbine_express_pkg wte.launch.py 
 ```
+In cmd #2
+```bash
+ros2 launch aquabot_gz competition.launch.py world:=aquabot_windturbines_hard competition_mode:=true
+```
+
+#### Launch with the simulation
+In cmd #1 
+```bash
+ros2 launch wind_turbine_express_pkg wte_sim.launch.py 
+```
 
