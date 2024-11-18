@@ -27,15 +27,9 @@ sudo make install
 ```
 ### Starting commands
 
-In cmd #1
+#### General launch
+In cmd #1 
 ```bash
 ros2 launch wind_turbine_express_pkg wte.launch.py 
 ```
-In cmd #2
-```bash
-ros2 run wind_turbine_express_pkg wte_aquabot.py
-```
-In cmd #3
-```bash
-ros2 run wind_turbine_express_pkg thruster_driver.py
-```
+
