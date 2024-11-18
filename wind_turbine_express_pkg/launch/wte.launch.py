@@ -13,31 +13,10 @@
 # limitations under the License.
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, TimerAction
-from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
-import os
-from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-
-    default_world_name = 'aquabot_windturbines_medium'
-    #aquabot_regatta
-    #aquabot_windturbines_easy
-    #aquabot_windturbines_medium
-    #aquabot_windturbines_hard
-    world_arg = DeclareLaunchArgument(
-            'world',
-            default_value = default_world_name,
-            description = 'World name')
-
-    aquabot_competition_launch_file = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('aquabot_gz'), 
-                         'launch/competition.launch.py')),
-            launch_arguments={}.items()
-    )
 
     navigation_node = Node(
         package="wind_turbine_express_pkg",
@@ -64,15 +43,10 @@ def generate_launch_description():
     )
     
     return LaunchDescription([
-        world_arg,
-        aquabot_competition_launch_file,
-        TimerAction(
-            period=10.0,  # Delay in seconds
-            actions=[
-                navigation_node,
-                thruster_driver_node,
-                cv_node,
-                planner_node,
-            ]
-        ),
+
+        navigation_node,
+        thruster_driver_node,
+        cv_node,
+        planner_node,
+
     ])

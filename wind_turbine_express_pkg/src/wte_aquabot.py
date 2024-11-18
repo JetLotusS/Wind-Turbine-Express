@@ -39,6 +39,7 @@ class WTEAquabotNode(Node):
         self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/navigation/point', self.get_point_callback, 10, callback_group=self.reentrant_group)
         self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10, callback_group=self.reentrant_group)
         self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10)
+        self.score_subscriber = self.create_subscription(ParamVec, '/vrx/task/info', self.score_callback, 10)
 
         self.thruster_pub = self.create_publisher(Thruster, '/aquabot/thrusters/thruster_driver', 5)
         self.cam_goal_pos_pub = self.create_publisher(Float64, '/aquabot/main_camera_sensor/goal_pose', 5)
@@ -51,6 +52,9 @@ class WTEAquabotNode(Node):
 
         # Variables
         self.current_task = 1
+        self.score = 0.0
+
+        self.yaw = 0.0
 
         self.nav_point_x = Float64()
         self.nav_point_y = Float64()
@@ -92,10 +96,20 @@ class WTEAquabotNode(Node):
 
     def current_phase_callback(self, msg):
         """
-        Get the current task number
+        Get the current phase number
         """
         self.current_task = msg.data
         self.get_logger().info(f'current_task: {self.current_task}')
+
+
+    def score_callback(self, msg):
+        """
+        Get the current score
+        """
+        for param in msg.params:
+            if param.name == "score":
+                self.score = param.value.double_value
+                self.get_logger().info(f'SCORE : {self.score}')
 
 
     def chat_callback(self, msg):
@@ -384,8 +398,8 @@ class WTEAquabotNode(Node):
                     thruster_msg.speed = thruster_msg.speed*0.5
 
                 # Reduce speed if aquabot close to critical wind turbine
-                if self.aquabot_close_to_critical_wind_turbine and self.current_task==3:
-                    thruster_msg.speed = thruster_msg.speed*0.2
+                #if self.aquabot_close_to_critical_wind_turbine and self.current_task==3:
+                #    thruster_msg.speed = thruster_msg.speed*0.1
 
                 thruster_msg.speed = thruster_msg.speed*(5000/6.17)
                 self.thruster_pub.publish(thruster_msg)
@@ -403,11 +417,13 @@ class WTEAquabotNode(Node):
             # STABILIZE
             # critical wind turbine (cwt) to aquabot distance needs to be 10m (+-1m)
             cwt_to_aquabot_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])
-            self.get_logger().info(f"point_x: {point_x}, point_y: {point_y}")
+            #self.get_logger().info(f"point_x: {point_x}, point_y: {point_y}")
             cwt_to_point_facing_the_qrcode_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, point_x, point_y)
-            self.get_logger().info(f"cwt_to_point_facing_the_qrcode_distance: {cwt_to_point_facing_the_qrcode_distance}")
-            self.get_logger().info(f"cwt_x: {self.critical_wind_turbine_x}, cwt_y: {self.critical_wind_turbine_y}")
-            #self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
+            #self.get_logger().info(f"cwt_to_point_facing_the_qrcode_distance: {cwt_to_point_facing_the_qrcode_distance}")
+            #self.get_logger().info(f"cwt_x: {self.critical_wind_turbine_x}, cwt_y: {self.critical_wind_turbine_y}")
+            self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
+            aquabot_to_point_facing_the_qrcode_distance = self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], point_x, point_y)
+
 
             # Aquabot needs to point toward the critical wind turbine
             cwt_orientation = np.arccos((self.critical_wind_turbine_x - self.aquabot_coordinate[0])/cwt_to_aquabot_distance)
@@ -417,14 +433,14 @@ class WTEAquabotNode(Node):
             thruster_msg.theta = cwt_orientation
             
             # Compute the angle for the aquabot to face the qr code during the stabilisation phase
-            cwt_qrcode_orientation = np.arccos((- self.critical_wind_turbine_x + point_x)/cwt_to_point_facing_the_qrcode_distance)
+            cwt_qrcode_orientation = np.arccos((self.critical_wind_turbine_x - point_x)/cwt_to_point_facing_the_qrcode_distance)
             if self.critical_wind_turbine_y < point_y:
                     cwt_qrcode_orientation = -cwt_qrcode_orientation
 
             self.qr_code_theta.data = cwt_qrcode_orientation
 
-            self.get_logger().info(f"cwt_qrcode_orientation: {cwt_qrcode_orientation}")
-            self.get_logger().info(f"self.yaw: {self.yaw}")
+            #self.get_logger().info(f"cwt_qrcode_orientation: {cwt_qrcode_orientation}")
+            self.get_logger().info(f"aquabot_to_point_facing_the_qrcode_distance: {aquabot_to_point_facing_the_qrcode_distance}")
 
             
             # Speed P Controller
