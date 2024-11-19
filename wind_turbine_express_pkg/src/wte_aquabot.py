@@ -113,7 +113,7 @@ class WTEAquabotNode(Node):
         """
         Calcul once the coordinates of the critical wind turbine from the pinger data when task phase update to 2
         """
-        if self.current_task == 2 and self.critical_wind_turbine_coordinates_calculated == False:
+        if self.current_task >= 2 and self.critical_wind_turbine_coordinates_calculated == False:
             msg_cwt_cordinates = Thruster()
 
             for param in msg.params:
