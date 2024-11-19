@@ -757,15 +757,14 @@ class WTENavigationNode(Node):
         if len(points_qui_coupent) > 0 and len(point_eolienne_coupe) > 0:
             self.get_logger().info("Collision entre rocher et eolienne possible")
             #On va comparer la distance entre leolienne et le rocher le plus proche et regarde ce qui est le plus urgent
-            i_rocher_plus_proche_local = self.indice_plus_proche(self.G[0][i] for i in points_qui_coupent)
+            i_rocher_plus_proche_local = self.indice_plus_proche([self.G[0][i] for i in points_qui_coupent], self.pos_aquabot)
             i_rocher_plus_proche = points_qui_coupent[i_rocher_plus_proche_local]
             pos_rocher = self.G[0][i_rocher_plus_proche]
         
             indice_local_eolienne_plus_proche = self.indice_plus_proche([self.coordonnees_eoliennes[k] for k in eoliennes_a_portee], self.pos_aquabot)
             i_eolienne_plus_proche = eoliennes_a_portee[indice_local_eolienne_plus_proche]
             i_point_eolienne_plus_proche_local = self.indice_plus_proche([self.l_graphe_eolienne[i_eolienne_plus_proche][0][i] for i in point_eolienne_coupe], self.pos_aquabot)
-            i_point_eolienne_plus_proche = [self.l_graphe_eolienne[i_eolienne_plus_proche][0][i] for i in point_eolienne_coupe][i_point_eolienne_plus_proche_local]
-            pos_point_passage_eolienne = self.l_graphe_eolienne[i_eolienne_plus_proche][0][i_point_eolienne_plus_proche]
+            pos_point_passage_eolienne = self.l_graphe_eolienne[i_eolienne_plus_proche][0][i_point_eolienne_plus_proche_local]
 
             if self.dist(pos_point_passage_eolienne,self.pos_aquabot) < self.dist(pos_rocher,self.pos_aquabot):
                 # C'est l'éolienne dont il faut s'occuper
