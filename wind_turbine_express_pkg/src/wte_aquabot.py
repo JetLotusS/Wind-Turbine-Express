@@ -78,8 +78,8 @@ class WTEAquabotNode(Node):
         self.wind_turbines_distance = []
 
         #Speed PID Controller variables
-        self.speed_controller_k_p = 0.10
-        self.speed_controller_k_i = 0.001
+        self.speed_controller_k_p = 0.15
+        self.speed_controller_k_i = 0.0
         self.speed_controller_k_d = 0.0
         self.speed_controller_previous_error = 0.0
         self.speed_controller_integral = 0.0
@@ -359,6 +359,11 @@ class WTEAquabotNode(Node):
                 thruster_msg.speed = self.speed_controller_k_p*speed_controller_error + self.speed_controller_k_i*self.speed_controller_integral + self.speed_controller_k_d*speed_controller_derivative
                 self.speed_controller_previous_error = speed_controller_error
 
+                self.get_logger().info(f"speed_controller_error: {speed_controller_error}")
+                self.get_logger().info(f"speed_controller_integral: {self.speed_controller_integral}")
+                self.get_logger().info(f"speed_controller_derivative: {speed_controller_derivative}")
+                self.get_logger().info(f"thruster_msg.speed: {thruster_msg.speed}")
+
                 #self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
                 #self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
                 #self.get_logger().info(f"p_a_xd: {point_x - self.aquabot_coordinate[0]}, p_a_yd: {goal_point_to_aquabot_distance}")
@@ -410,7 +415,7 @@ class WTEAquabotNode(Node):
             cwt_to_point_facing_the_qrcode_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, point_x, point_y)
             #self.get_logger().info(f"cwt_to_point_facing_the_qrcode_distance: {cwt_to_point_facing_the_qrcode_distance}")
             #self.get_logger().info(f"cwt_x: {self.critical_wind_turbine_x}, cwt_y: {self.critical_wind_turbine_y}")
-            self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
+            #self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
             aquabot_to_point_facing_the_qrcode_distance = self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], point_x, point_y)
 
 
