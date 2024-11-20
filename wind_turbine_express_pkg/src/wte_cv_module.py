@@ -27,7 +27,7 @@ class OpenCvDecoder(Node):
         super().__init__('wte_cv_node')
 
         # Create a subscriber on the topic "image_raw"
-        self.subscriber = self.create_subscription(Image, '/aquabot/sensors/cameras/main_camera_sensor/image_raw', self.image_callback, 10)
+        self.subscriber = self.create_subscription(Image, '/aquabot/sensors/cameras/main_camera_sensor/image_raw', self.image_callback, 1)
         
         # Create a publisher on the topic "windturbine_checkup"
         self.windturbines_report_publisher = self.create_publisher(String, '/vrx/windturbinesinspection/windturbine_checkup', 5)

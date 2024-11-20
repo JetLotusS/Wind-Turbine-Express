@@ -393,6 +393,9 @@ class ThrusterNode(Node):
             self.thruster_turn_angle = self.direction_controller_k_p*direction_controller_error + self.direction_controller_k_i*self.direction_controller_integral + self.direction_controller_k_d*direction_controller_derivative
             self.direction_controller_previous_error = direction_controller_error
         else:
+            # Compute the distance between the aquabot and the stabilization point
+            aquabot_to_point_facing_the_qrcode_distance = self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], self.x_goal_pose, self.y_goal_pose)
+
             stabilisation_tolerence_angle = 0.1
 
             if abs(direction_controller_error) < stabilisation_tolerence_angle:
@@ -441,16 +444,14 @@ class ThrusterNode(Node):
                 self.get_logger().warning("No QR code goal pose received yet. Skipping stabilisation.")
                 return
             
-            aquabot_to_point_facing_the_qrcode_distance = self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], self.x_goal_pose, self.y_goal_pose)
-
-            stabilisation_direction_error = (self.qr_code_goal_pose - self.yaw)
+            stabilisation_direction_error = (self.qr_code_goal_pose - self.yaw_goal_pose)
             if np.abs(stabilisation_direction_error) > np.pi:
                 if stabilisation_direction_error > 0:
                     stabilisation_direction_error -= 2*np.pi
                 else:
                     stabilisation_direction_error += 2*np.pi
             if self.current_task == 3:
-                speed_for_lateral_movement = stabilisation_direction_error*min(500, aquabot_to_point_facing_the_qrcode_distance*100)
+                speed_for_lateral_movement = stabilisation_direction_error*min(500, aquabot_to_point_facing_the_qrcode_distance*500)
             else:
                 speed_for_lateral_movement = 500.0
 

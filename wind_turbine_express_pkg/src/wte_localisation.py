@@ -36,6 +36,8 @@ class LocalisationNode(Node):
         self.aquabot_x = 0.0
         self.aquabot_y = 0.0
 
+        self.wind_turbines_coordinates = []
+        self.wind_turbines_coordinates_calcualted = False
     def distance_from_point(self, lat1, long1, lat2, long2):
         
         theta1 = lat1 * np.pi/180
@@ -75,27 +77,25 @@ class LocalisationNode(Node):
         #self.get_logger().info(f'aquabot_center_distance: {aquabot_center_distance}')
         
         aquabot_coordinate = self.coordinates_from_point(msg.latitude, msg.longitude, self.origine_latitude, self.origine_longitude)
-        self.get_logger().info(f'x: {aquabot_coordinate[0]}, y: {aquabot_coordinate[1]}')
+        #self.get_logger().info(f'x: {aquabot_coordinate[0]}, y: {aquabot_coordinate[1]}')
+
 
     def ais_callback(self, msg):
-        
-        self.eolienne_1_latitude = msg.poses[0].position.x
-        self.eolienne_1_longitude = msg.poses[0].position.y
+        """
+        Receives wind turbines gps position
+        """
+        if not self.wind_turbines_coordinates_calcualted:
+            poses = msg.poses
+            for pose in poses:
+                wt_latitude = pose.position.x
+                wt_longitude = pose.position.y
+                wt_coordinates = self.coordinates_from_point(wt_latitude, wt_longitude, self.origine_latitude, self.origine_longitude)
+                self.wind_turbines_coordinates.append(wt_coordinates)
 
-        self.eolienne_2_latitude = msg.poses[1].position.x
-        self.eolienne_2_longitude = msg.poses[1].position.y
+            self.wind_turbines_coordinates_calcualted = True
 
-        self.eolienne_3_latitude = msg.poses[2].position.x
-        self.eolienne_3_longitude = msg.poses[2].position.y
-        
-        eolienne_1_coordinate = self.coordinates_from_point(self.eolienne_1_latitude, self.eolienne_1_longitude, self.origine_latitude, self.origine_longitude)
-        self.get_logger().info(f'x_e1: {eolienne_1_coordinate[0]}, y_e1: {eolienne_1_coordinate[1]}')
-
-        eolienne_2_coordinate = self.coordinates_from_point(self.eolienne_2_latitude, self.eolienne_2_longitude, self.origine_latitude, self.origine_longitude)
-        self.get_logger().info(f'x_e2: {eolienne_2_coordinate[0]}, y_e2: {eolienne_2_coordinate[1]}')
-
-        eolienne_3_coordinate = self.coordinates_from_point(self.eolienne_3_latitude, self.eolienne_3_longitude, self.origine_latitude, self.origine_longitude)
-        self.get_logger().info(f'x_e3: {eolienne_3_coordinate[0]}, y_e3: {eolienne_3_coordinate[1]}')
+        self.get_logger().info(f"wind_turbines_coordinates : {self.wind_turbines_coordinates}")
+        #self.get_logger().info(f"wind_turbines_distance : {self.wind_turbines_distance}")
 
 
 def main(args=None):
