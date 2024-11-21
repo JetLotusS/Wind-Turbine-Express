@@ -49,9 +49,12 @@ class WTEAquabotNode(Node):
         self.timer_period = 0.1  # seconds
         self.timer = self.create_timer(self.timer_period, self.navigation_callback, callback_group=self.reentrant_group)
 
+        # Constants
+        self.origine_latitude = 48.04630
+        self.origine_longitude = -4.97632
+
         # Variables
         self.current_task = 1
-        self.score = 0.0
 
         self.yaw = 0.0
 
@@ -62,24 +65,20 @@ class WTEAquabotNode(Node):
         self.aquabot_close_to_wind_turbine = False
         self.aquabot_close_to_critical_wind_turbine = False
         self.closest_winturbine_angle = 0.0
+        
+        self.wt_coordinates_index = 0
+        self.wind_turbines_coordinates = []
+        self.wind_turbines_coordinates_calcualted = False
+        self.wind_turbines_distance = []
 
         self.critical_wind_turbine_x = 0.0
         self.critical_wind_turbine_y = 0.0
         self.critical_wind_turbine_coordinates_calculated = False
         self.its_time_to_stabilise = False
-        self.you_spin_me_right_round_baby_right_round = False
-
-        # Constants
-        self.origine_latitude = 48.04630
-        self.origine_longitude = -4.97632
-        
-        self.wt_coordinates_index = 0
-        self.wind_turbines_coordinates = []
-        self.wind_turbines_distance = []
 
         #Speed PID Controller variables
-        self.speed_controller_k_p = 0.10
-        self.speed_controller_k_i = 0.001
+        self.speed_controller_k_p = 0.15
+        self.speed_controller_k_i = 0.0
         self.speed_controller_k_d = 0.0
         self.speed_controller_previous_error = 0.0
         self.speed_controller_integral = 0.0
@@ -132,16 +131,16 @@ class WTEAquabotNode(Node):
             msg_cwt_cordinates.y = self.critical_wind_turbine_y
             self.critical_wind_turbine_pub.publish(msg_cwt_cordinates)
 
-            eolienne_A_distance_to_critical = self.xy_distance(self.wind_turbines_coordinates[0][0], self.wind_turbines_coordinates[0][1], self.critical_wind_turbine_x, self.critical_wind_turbine_y)
-            eolienne_B_distance_to_critical = self.xy_distance(self.wind_turbines_coordinates[1][0], self.wind_turbines_coordinates[1][1], self.critical_wind_turbine_x, self.critical_wind_turbine_y)
-            eolienne_C_distance_to_critical = self.xy_distance(self.wind_turbines_coordinates[2][0], self.wind_turbines_coordinates[2][1], self.critical_wind_turbine_x, self.critical_wind_turbine_y)
+            wt_distance_to_cwt_list = []
 
-            self.wind_turbines_distance = [eolienne_A_distance_to_critical, eolienne_B_distance_to_critical, eolienne_C_distance_to_critical]
+            for wt_coordinates in self.wind_turbines_coordinates:
+                wt_distance_to_ctw = self.xy_distance(wt_coordinates[0], wt_coordinates[1], self.critical_wind_turbine_x, self.critical_wind_turbine_y)
+                wt_distance_to_cwt_list.append(wt_distance_to_ctw)
+            
+            closest_wind_turbine_dist = min(wt_distance_to_cwt_list)
 
-            closest_wind_turbine_dist = min(self.wind_turbines_distance[0], self.wind_turbines_distance[1], self.wind_turbines_distance[2])
-
-            self.critical_wind_turbine_x = self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][0]
-            self.critical_wind_turbine_y = self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][1]
+            self.critical_wind_turbine_x = self.wind_turbines_coordinates[wt_distance_to_cwt_list.index(closest_wind_turbine_dist)][0]
+            self.critical_wind_turbine_y = self.wind_turbines_coordinates[wt_distance_to_cwt_list.index(closest_wind_turbine_dist)][1]
 
         else:
             return
@@ -233,20 +232,15 @@ class WTEAquabotNode(Node):
         """
         Receives wind turbines gps position
         """
-        self.eolienne_A_latitude = msg.poses[0].position.x
-        self.eolienne_A_longitude = msg.poses[0].position.y
+        if not self.wind_turbines_coordinates_calcualted:
+            poses = msg.poses
+            for pose in poses:
+                wt_latitude = pose.position.x
+                wt_longitude = pose.position.y
+                wt_coordinates = self.coordinates_from_point(wt_latitude, wt_longitude, self.origine_latitude, self.origine_longitude)
+                self.wind_turbines_coordinates.append(wt_coordinates)
 
-        self.eolienne_B_latitude = msg.poses[1].position.x
-        self.eolienne_B_longitude = msg.poses[1].position.y
-
-        self.eolienne_C_latitude = msg.poses[2].position.x
-        self.eolienne_C_longitude = msg.poses[2].position.y
-        
-        eolienne_A_coordinate = self.coordinates_from_point(self.eolienne_A_latitude, self.eolienne_A_longitude, self.origine_latitude, self.origine_longitude)
-        eolienne_B_coordinate = self.coordinates_from_point(self.eolienne_B_latitude, self.eolienne_B_longitude, self.origine_latitude, self.origine_longitude)
-        eolienne_C_coordinate = self.coordinates_from_point(self.eolienne_C_latitude, self.eolienne_C_longitude, self.origine_latitude, self.origine_longitude)
-        
-        self.wind_turbines_coordinates = [eolienne_A_coordinate, eolienne_B_coordinate, eolienne_C_coordinate]
+            self.wind_turbines_coordinates_calcualted = True
 
         #self.get_logger().info(f"wind_turbines_coordinates : {self.wind_turbines_coordinates}")
         #self.get_logger().info(f"wind_turbines_distance : {self.wind_turbines_distance}")
@@ -294,13 +288,14 @@ class WTEAquabotNode(Node):
         if not self.wind_turbines_coordinates:
             #self.get_logger().warning("Wind turbine coordinates not available yet!")
             return
-    
-        eolienne_A_distance = self.xy_distance(self.wind_turbines_coordinates[0][0], self.wind_turbines_coordinates[0][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
-        eolienne_B_distance = self.xy_distance(self.wind_turbines_coordinates[1][0], self.wind_turbines_coordinates[1][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
-        eolienne_C_distance = self.xy_distance(self.wind_turbines_coordinates[2][0], self.wind_turbines_coordinates[2][1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
 
-        # List of the distances between the aquabot and the wind turbines
-        self.wind_turbines_distance = [eolienne_A_distance, eolienne_B_distance, eolienne_C_distance]
+        # Create a list of the distances between the aquabot and the wind turbines
+        self.wind_turbines_distance = []
+        for wt_coordinates in self.wind_turbines_coordinates:
+            wt_distance_to_aquabot = self.xy_distance(wt_coordinates[0], wt_coordinates[1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
+            self.wind_turbines_distance.append(wt_distance_to_aquabot)
+        self.get_logger().warning(f"self.wind_turbines_distance: {self.wind_turbines_distance}")
+        
         # Distance between the aquabot and the critical wind turbine
         self.critical_wind_turbines_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])
 
@@ -316,7 +311,7 @@ class WTEAquabotNode(Node):
         
         # CAMERA CONTROLLER ----------------------------------------------------------------------------------------------------------------------
         # Compute the camera angle -> point the camera to the closest wind turbine
-        closest_wind_turbine_dist = min(self.wind_turbines_distance[0], self.wind_turbines_distance[1], self.wind_turbines_distance[2])
+        closest_wind_turbine_dist = min(self.wind_turbines_distance)
         closest_wind_turbine_x_dist = (self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][0] - self.aquabot_coordinate[0])
         closest_wind_turbine_y_co = self.wind_turbines_coordinates[self.wind_turbines_distance.index(closest_wind_turbine_dist)][1]
 
@@ -359,6 +354,11 @@ class WTEAquabotNode(Node):
                 thruster_msg.speed = self.speed_controller_k_p*speed_controller_error + self.speed_controller_k_i*self.speed_controller_integral + self.speed_controller_k_d*speed_controller_derivative
                 self.speed_controller_previous_error = speed_controller_error
 
+                #self.get_logger().info(f"speed_controller_error: {speed_controller_error}")
+                #self.get_logger().info(f"speed_controller_integral: {self.speed_controller_integral}")
+                #self.get_logger().info(f"speed_controller_derivative: {speed_controller_derivative}")
+                #self.get_logger().info(f"thruster_msg.speed: {thruster_msg.speed}")
+
                 #self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
                 #self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
                 #self.get_logger().info(f"p_a_xd: {point_x - self.aquabot_coordinate[0]}, p_a_yd: {goal_point_to_aquabot_distance}")
@@ -372,11 +372,11 @@ class WTEAquabotNode(Node):
                 #self.get_logger().info(f"thruster_msg.theta: {thruster_msg.theta}")
 
                 # Uptade aquabot_close_to_wind_turbine to True if the distance between the aquabot and a wind turbine is less than 40m
-                if self.wind_turbines_distance[0] < 50 or self.wind_turbines_distance[1] < 50 or self.wind_turbines_distance[2] < 50:
-                    self.aquabot_close_to_wind_turbine = True
-                else:
-                    self.aquabot_close_to_wind_turbine = False
-
+                self.aquabot_close_to_wind_turbine = False
+                for wt_distance in self.wind_turbines_distance:
+                    if wt_distance < 50:
+                        self.aquabot_close_to_wind_turbine = True
+                    
                 if self.critical_wind_turbines_distance < 50:
                     self.aquabot_close_to_critical_wind_turbine = True
                 else:
@@ -410,7 +410,7 @@ class WTEAquabotNode(Node):
             cwt_to_point_facing_the_qrcode_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, point_x, point_y)
             #self.get_logger().info(f"cwt_to_point_facing_the_qrcode_distance: {cwt_to_point_facing_the_qrcode_distance}")
             #self.get_logger().info(f"cwt_x: {self.critical_wind_turbine_x}, cwt_y: {self.critical_wind_turbine_y}")
-            self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
+            #self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
             aquabot_to_point_facing_the_qrcode_distance = self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], point_x, point_y)
 
 

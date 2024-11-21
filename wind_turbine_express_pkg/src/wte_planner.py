@@ -527,23 +527,26 @@ class WTENavigationNode(Node):
         Renvoie la liste des indice dans lesquel parcourir les éoliennes ainsi que la distance total (distance,ordre)
         """
         #A REFAIRE AVEC N EOLIENNE :( Algo glouton de recherche de chemin / salesman / recherche exhaustive fonctionne jusqu'à 8 sommet :shrug:
-        if self.n_eolienne <= 8:
-            self.get_logger().info(f"n:eolienne {self.n_eolienne}")
-            ordre_possible = tp.generate_all_perm(self.n_eolienne)
 
-            self.get_logger().info(f"Nombre ordre possible : {len(ordre_possible)}")
-        else:
-            ordre_possible = [(0,1,2),(0,2,1),(1,0,2),(1,2,0)]
+        meilleur_ordre, d = tp.run_combat_genetic(self.coordonnees_eoliennes)
 
-        self.get_logger().info(f"Nombre ordre possible : {len(ordre_possible)}")
+        #if self.n_eolienne <= 8:
+        #    self.get_logger().info(f"n:eolienne {self.n_eolienne}")
+        #    ordre_possible = tp.generate_all_perm(self.n_eolienne)#
 
-        cout_min = self.calcul_cout_ordre(ordre_possible[0])
-        meilleur_ordre = ordre_possible[0]
-        for ord in ordre_possible:
-            cout = self.calcul_cout_ordre(ord)
-            if cout < cout_min:
-                cout_min = cout
-                meilleur_ordre = ord
+        #    self.get_logger().info(f"Nombre ordre possible : {len(ordre_possible)}")
+        #else:
+        #    ordre_possible = [(0,1,2),(0,2,1),(1,0,2),(1,2,0)]
+
+        #self.get_logger().info(f"Nombre ordre possible : {len(ordre_possible)}")
+
+        #cout_min = self.calcul_cout_ordre(ordre_possible[0])
+        #meilleur_ordre = ordre_possible[0]
+        #for ord in ordre_possible:
+        #    cout = self.calcul_cout_ordre(ord)
+        #    if cout < cout_min:
+        #        cout_min = cout
+        #        meilleur_ordre = ord
 
         return meilleur_ordre
     
@@ -633,7 +636,7 @@ class WTENavigationNode(Node):
 
         
         #Position de l'objectif d'apres
-        if i_actuel < 2:
+        if i_actuel < self.n_eolienne - 1:
             pos_suivante = self.coordonnees_eoliennes[self.ordre_visite[(i_actuel + 1)]]
         else:
             pos_suivante = (0,0)
