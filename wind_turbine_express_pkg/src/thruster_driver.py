@@ -37,12 +37,13 @@ class ThrusterNode(Node):
 
         self.reentrant_group = ReentrantCallbackGroup()
 
-        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10)
-        self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10)
-        self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10)
-        self.cam_goal_pos_subscriber = self.create_subscription(Float64, '/aquabot/main_camera_sensor/goal_pose', self.cam_goal_pose_callback, 10)
-        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10)
-        self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10)
+        self.gps_subscriber = self.create_subscription(NavSatFix, '/aquabot/sensors/gps/gps/fix', self.gps_callback, 10, callback_group=self.reentrant_group)
+        self.imu_subscriber = self.create_subscription(Imu, '/aquabot/sensors/imu/imu/data', self.imu_callback, 10, callback_group=self.reentrant_group)
+        self.thruster_subscriber = self.create_subscription(Thruster, '/aquabot/thrusters/thruster_driver', self.thruster_callback, 10, callback_group=self.reentrant_group)
+        self.cam_goal_pos_subscriber = self.create_subscription(Float64, '/aquabot/main_camera_sensor/goal_pose', self.cam_goal_pose_callback, 10, callback_group=self.reentrant_group)
+        self.qr_code_goal_pose_subscriber = self.create_subscription(Float64, '/aquabot/stabilisation/goal_pose', self.stabilisation_goal_orientation_callback, 10, callback_group=self.reentrant_group)
+        self.current_phase_subscriber = self.create_subscription(UInt32, '/vrx/windturbinesinspection/current_phase', self.current_phase_callback, 10, callback_group=self.reentrant_group)
+        self.chat_subscriber = self.create_subscription(String, '/aquabot/chat', self.chat_callback, 10, callback_group=self.reentrant_group)
 
         # Create publishers for thruster control
         self.left_speed_pub = self.create_publisher(Float64, '/aquabot/thrusters/left/thrust', 5, callback_group=self.reentrant_group)
@@ -53,9 +54,17 @@ class ThrusterNode(Node):
         # Create a publisher for camera control
         self.cam_thruster_pub = self.create_publisher(Float64, '/aquabot/thrusters/main_camera_sensor/pos', 5, callback_group=self.reentrant_group)
         
-        # For the camera TF listener
+        # Camera TF listener
         self.cam_tf_buffer = Buffer()
         self.cam_tf_listener = TransformListener(self.cam_tf_buffer, self)
+
+        # Left engine TF listener
+        self.left_engine_tf_buffer = Buffer()
+        self.left_engine_tf_listener = TransformListener(self.left_engine_tf_buffer, self)
+
+        # Right engine TF listener
+        self.right_engine_tf_buffer = Buffer()
+        self.right_engine_tf_listener = TransformListener(self.right_engine_tf_buffer, self)
 
         # Create a timer that will call the driver_callback function every 100ms
         self.timer_period = 0.1  # seconds
@@ -64,6 +73,12 @@ class ThrusterNode(Node):
         # Create a timer that will call the cam_tf_callback function every 100ms
         self.timer2 = self.create_timer(self.timer_period, self.cam_tf_callback, callback_group=self.reentrant_group)
 
+        # Create a timer that will call the cam_tf_callback function every 100ms
+        self.timer3 = self.create_timer(self.timer_period, self.left_engine_tf_callback, callback_group=self.reentrant_group)
+
+        # Create a timer that will call the cam_tf_callback function every 100ms
+        self.timer4 = self.create_timer(self.timer_period, self.right_engine_tf_callback, callback_group=self.reentrant_group)
+
         # Add a callback for parameter changes
         self.add_on_set_parameters_callback(self.parameter_callback)
 
@@ -71,6 +86,10 @@ class ThrusterNode(Node):
         self.aquabot_coordinate = []
         self.current_task = 1
         self.its_time_to_stabilise = False
+        self.qr_code_goal_pose = None
+
+        self.left_engine_tf_angle = 0.0
+        self.right_engine_tf_angle = 0.0
 
         # Declare thruster variables
         self.thruster_speed = 0.0
@@ -88,7 +107,7 @@ class ThrusterNode(Node):
         self.prev_y_goal_pose = Float64()
         self.yaw_goal_pose = Float64()
         self.thruster_goal_speed = Float64()
-
+        
         # GPS coordinates of the center
         self.origine_latitude = 48.04630
         self.origine_longitude = -4.97632
@@ -107,7 +126,7 @@ class ThrusterNode(Node):
         self.direction_controller_integral = 0.0
         self.thruster_turn_angle = 0.0
         
-        self.stabilisation_speed_controller_k_p = 100.0
+        self.stabilisation_speed_controller_k_p = 500.0
 
         # Declare camera variable
 
@@ -245,6 +264,13 @@ class ThrusterNode(Node):
         #self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, thruster_goal_speed: {self.thruster_goal_speed}")
 
 
+    def stabilisation_goal_orientation_callback(self, msg):
+        """
+        Receive the correct orientation to face the QR code during the stabilisation phase
+        """
+        self.qr_code_goal_pose = msg.data
+
+
     def cam_goal_pose_callback(self, msg):
         """
         Receives camera goal position
@@ -268,8 +294,7 @@ class ThrusterNode(Node):
                         from_frame_rel,
                         now)
         except TransformException as ex:
-            self.get_logger().info(
-                f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+            self.get_logger().info(f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
             return
 
         quaternion = [trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z, trans.transform.rotation.w]
@@ -277,6 +302,56 @@ class ThrusterNode(Node):
         self.camera_tf_angle = -self.euler_from_quaternion(quaternion) # + and - inverted between the TF and the sim
         #self.get_logger().info(f"camera_angle: {self.camera_tf_angle}")
         
+
+    def left_engine_tf_callback(self):
+        """
+        Listen to the TF between the left engine and the base_link to get the actual angle of the camera
+        """
+        from_frame_rel = 'wamv/wamv/base_link'
+        to_frame_rel = 'wamv/wamv/left_engine_link'
+    
+        trans = None
+        
+        try:
+            now = Time()
+            trans = self.left_engine_tf_buffer.lookup_transform(
+                        to_frame_rel,
+                        from_frame_rel,
+                        now)
+        except TransformException as ex:
+            self.get_logger().info(f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+            return
+
+        quaternion = [trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z, trans.transform.rotation.w]
+
+        self.left_engine_tf_angle = -self.euler_from_quaternion(quaternion) # + and - inverted between the TF and the sim
+        #self.get_logger().info(f"left_engine_tf_angle: {self.left_engine_tf_angle}")
+
+
+    def right_engine_tf_callback(self):
+        """
+        Listen to the TF between the right engine and the base_link to get the actual angle of the camera
+        """
+        from_frame_rel = 'wamv/wamv/base_link'
+        to_frame_rel = 'wamv/wamv/right_engine_link'
+    
+        trans = None
+        
+        try:
+            now = Time()
+            trans = self.right_engine_tf_buffer.lookup_transform(
+                        to_frame_rel,
+                        from_frame_rel,
+                        now)
+        except TransformException as ex:
+            self.get_logger().info(f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+            return
+
+        quaternion = [trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z, trans.transform.rotation.w]
+
+        self.right_engine_tf_angle = -self.euler_from_quaternion(quaternion) # + and - inverted between the TF and the sim
+        #self.get_logger().info(f"right_engine_tf_angle: {self.right_engine_tf_angle}")
+
 
     def driver_callback(self):
         """
@@ -318,9 +393,13 @@ class ThrusterNode(Node):
             self.thruster_turn_angle = self.direction_controller_k_p*direction_controller_error + self.direction_controller_k_i*self.direction_controller_integral + self.direction_controller_k_d*direction_controller_derivative
             self.direction_controller_previous_error = direction_controller_error
         else:
-            self.thruster_turn_angle = np.pi/4
+            stabilisation_tolerence_angle = 0.1
+
+            if abs(direction_controller_error) < stabilisation_tolerence_angle:
+                self.thruster_turn_angle = 0.22
+            else:
+                self.thruster_turn_angle = np.pi/4
             turning_speed_for_stabilisation = self.stabilisation_speed_controller_k_p*direction_controller_error
-            self.get_logger().info(f"self.thruster_turn_angle {self.thruster_turn_angle}")
         
         # END Direction PID controller ---------------------------------------------------------------------------------------------------------------------
 
@@ -354,13 +433,40 @@ class ThrusterNode(Node):
             self.left_turn = self.thruster_turn_angle
             self.right_turn = self.thruster_turn_angle
         else:
-            self.left_speed = self.thruster_speed + turning_speed_for_stabilisation
-            self.right_speed = self.thruster_speed - turning_speed_for_stabilisation
 
-            self.left_turn = self.thruster_turn_angle
-            self.right_turn = -self.thruster_turn_angle
+            self.left_turn = -self.thruster_turn_angle
+            self.right_turn = +self.thruster_turn_angle
 
-        self.get_logger().info(f"left_turn {self.left_turn}, right_turn {self.right_turn}")
+            if self.qr_code_goal_pose is None:
+                self.get_logger().warning("No QR code goal pose received yet. Skipping stabilisation.")
+                return
+            
+            aquabot_to_point_facing_the_qrcode_distance = self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], self.x_goal_pose, self.y_goal_pose)
+
+            stabilisation_direction_error = (self.qr_code_goal_pose - self.yaw)
+            if np.abs(stabilisation_direction_error) > np.pi:
+                if stabilisation_direction_error > 0:
+                    stabilisation_direction_error -= 2*np.pi
+                else:
+                    stabilisation_direction_error += 2*np.pi
+            if self.current_task == 3:
+                speed_for_lateral_movement = stabilisation_direction_error*min(500, aquabot_to_point_facing_the_qrcode_distance*100)
+            else:
+                speed_for_lateral_movement = 500.0
+
+            #self.get_logger().warning(f"speed_for_lateral_movement: {speed_for_lateral_movement}")
+            #self.get_logger().warning(f"turning_speed_for_stabilisation: {turning_speed_for_stabilisation}")
+
+            if abs(direction_controller_error) < stabilisation_tolerence_angle and np.abs(self.left_engine_tf_angle) < 0.23 and np.abs(self.right_engine_tf_angle) < 0.23:
+                self.left_speed = self.thruster_speed + speed_for_lateral_movement
+                self.right_speed = self.thruster_speed - speed_for_lateral_movement
+            else:
+                self.left_speed = self.thruster_speed - turning_speed_for_stabilisation
+                self.right_speed = self.thruster_speed + turning_speed_for_stabilisation
+
+
+
+        #self.get_logger().info(f"left_turn {self.left_turn}, right_turn {self.right_turn}")
 
         left_speed_msg = Float64()
         left_turn_msg = Float64()
