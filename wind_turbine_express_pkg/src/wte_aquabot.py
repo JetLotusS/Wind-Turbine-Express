@@ -384,7 +384,7 @@ class WTEAquabotNode(Node):
 
                 # Reduce speed if aquabot close to wind turbine
                 if self.aquabot_close_to_wind_turbine:
-                    thruster_msg.speed = thruster_msg.speed*0.5
+                    thruster_msg.speed = thruster_msg.speed
 
                 # Reduce speed if aquabot close to critical wind turbine
                 #if self.aquabot_close_to_critical_wind_turbine and self.current_task==3:

@@ -1,4 +1,3 @@
-
 from random import randint
 import math
 
@@ -10,7 +9,6 @@ def wide_perm(iteration, n):
     courbe_d = math.ceil(math.sqrt(n))
     courbe_offset = math.ceil(math.sqrt(math.sqrt(n)))
     return max(1, min(courbe_d, -iteration // racine + courbe_offset + courbe_d))
-
 
 
 def n_perm(iteration, n):
@@ -40,7 +38,7 @@ def distance(a, b):
 def calcul_cout(fourmis, points):
     """Calcule le cout d'un chemin effectuée par une fourmis"""
     n = len(fourmis)
-    cout = 0
+    cout = distance(points[0],(0,0))
     for i in range(n):
         i0 = fourmis[i]
         i1 = fourmis[(i + 1) % n]
@@ -102,37 +100,25 @@ def run_combat_genetic(points):
     iteration = 0
 
     n = len(points)
-    n_fourmis = n * 10
     n_fourmis_retenu = n
     racine = math.ceil(math.sqrt(n))
     n_enfant = racine
     n_iteration = 150
 
-
     liste_combattant = [glouton(points) for i in range(100)]
-
-    # print(liste_combattant)
 
     cout_fourmis = calcul_liste_cout(liste_combattant, points)
 
-    # print(cout_fourmis)
     keep_first(cout_fourmis)
 
     while iteration < n_iteration:
-        # print(iteration)
-
         liste_combattant = mutate_first(liste_combattant, cout_fourmis, iteration, n_fourmis_retenu, n_enfant, n)
-
-        # print(liste_combattant[0:n_fourmis_retenu])
 
         cout_fourmis = calcul_liste_cout(liste_combattant, points)
 
         keep_first(cout_fourmis)
 
-        # print(cout_fourmis[0:n_fourmis_retenu])
-
         iteration += 1
 
     keep_first(cout_fourmis)
     return liste_combattant[cout_fourmis[0][1]], calcul_cout(liste_combattant[cout_fourmis[0][1]], points)
-
