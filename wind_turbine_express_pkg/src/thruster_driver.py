@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
 
-# Copyright 2024 Wind Turbine Express.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import rclpy
 import numpy as np
 from rclpy.node import Node
@@ -260,8 +246,6 @@ class ThrusterNode(Node):
         self.y_goal_pose = msg.y
         self.yaw_goal_pose = msg.theta
         self.thruster_goal_speed = msg.speed
-        #self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
-        #self.get_logger().info(f"yaw_goal_pose: {self.yaw_goal_pose}, thruster_goal_speed: {self.thruster_goal_speed}")
 
 
     def stabilisation_goal_orientation_callback(self, msg):
@@ -300,7 +284,6 @@ class ThrusterNode(Node):
         quaternion = [trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z, trans.transform.rotation.w]
 
         self.camera_tf_angle = -self.euler_from_quaternion(quaternion) # + and - inverted between the TF and the sim
-        #self.get_logger().info(f"camera_angle: {self.camera_tf_angle}")
         
 
     def left_engine_tf_callback(self):
@@ -325,7 +308,6 @@ class ThrusterNode(Node):
         quaternion = [trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z, trans.transform.rotation.w]
 
         self.left_engine_tf_angle = -self.euler_from_quaternion(quaternion) # + and - inverted between the TF and the sim
-        #self.get_logger().info(f"left_engine_tf_angle: {self.left_engine_tf_angle}")
 
 
     def right_engine_tf_callback(self):
@@ -350,7 +332,6 @@ class ThrusterNode(Node):
         quaternion = [trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z, trans.transform.rotation.w]
 
         self.right_engine_tf_angle = -self.euler_from_quaternion(quaternion) # + and - inverted between the TF and the sim
-        #self.get_logger().info(f"right_engine_tf_angle: {self.right_engine_tf_angle}")
 
 
     def driver_callback(self):
@@ -362,19 +343,10 @@ class ThrusterNode(Node):
             #self.get_logger().warning("No goal received yet!")
             return
 
-        # Reset the integral part of the direction PID controller when the goal point change
-        #if self.prev_x_goal_pose != self.x_goal_pose and self.prev_y_goal_pose != self.y_goal_pose:
-        #    self.direction_controller_integral = 0.0
-
-        #self.prev_x_goal_pose == self.x_goal_pose
-        #self.prev_y_goal_pose == self.y_goal_pose
-
         if np.isnan(self.yaw_goal_pose):
             #self.get_logger().warning("yaw_goal_pose nan")
             return
         
-        #self.get_logger().info(f"x_goal_pose: {self.x_goal_pose}, y_goal_pose: {self.y_goal_pose}")
-
         turn_limit = 0.78539816339
         speed_limit = 5000.0
 
@@ -406,28 +378,14 @@ class ThrusterNode(Node):
         
         # END Direction PID controller ---------------------------------------------------------------------------------------------------------------------
 
-        #self.get_logger().info(f"thruster_turn_angle: {self.thruster_turn_angle}")
-        #self.get_logger().info(f"direction_controller_error: {self.direction_controller_k_p*direction_controller_error}")
-        #self.get_logger().info(f"direction_controller_integral: {self.direction_controller_k_i*self.direction_controller_integral}")
-        #self.get_logger().info(f"direction_controller_derivative: {self.direction_controller_k_d*direction_controller_derivative}")
-
-        #self.thruster_speed = self.thruster_speed/((1+np.abs(direction_controller_error))**8)
-        #self.get_logger().info(f"self.thruster_speed: {self.thruster_speed})"
-        
-        # Speed adjustment
-        #self.thruster_speed = min(speed_limit, np.abs(self.thruster_goal_speed))
         self.thruster_speed = self.thruster_goal_speed
-
-        #self.get_logger().info(f"self.thruster_speed: {self.thruster_speed}")
-                               
+                   
         # Camera P controller -------------------------------------------------------------------------------------------------------------------------
         cam_msg = Float64()
         camera_angle_error = self.cam_goal_pose - self.camera_tf_angle
         self.camera_angle += camera_angle_error*self.camera_controller_k_p
         cam_msg.data = float(self.camera_angle)
         # END Camera P controller -------------------------------------------------------------------------------------------------------------------------
-
-        #self.get_logger().info(f"thruster_turn_angle: {self.thruster_turn_angle}")
 
         if not self.its_time_to_stabilise:
             self.left_speed = self.thruster_speed
@@ -455,9 +413,6 @@ class ThrusterNode(Node):
             else:
                 speed_for_lateral_movement = 500.0
 
-            #self.get_logger().warning(f"speed_for_lateral_movement: {speed_for_lateral_movement}")
-            #self.get_logger().warning(f"turning_speed_for_stabilisation: {turning_speed_for_stabilisation}")
-
             if abs(direction_controller_error) < stabilisation_tolerence_angle and np.abs(self.left_engine_tf_angle) < 0.23 and np.abs(self.right_engine_tf_angle) < 0.23:
                 self.left_speed = self.thruster_speed + speed_for_lateral_movement
                 self.right_speed = self.thruster_speed - speed_for_lateral_movement
@@ -465,9 +420,6 @@ class ThrusterNode(Node):
                 self.left_speed = self.thruster_speed - turning_speed_for_stabilisation
                 self.right_speed = self.thruster_speed + turning_speed_for_stabilisation
 
-
-
-        #self.get_logger().info(f"left_turn {self.left_turn}, right_turn {self.right_turn}")
 
         left_speed_msg = Float64()
         left_turn_msg = Float64()

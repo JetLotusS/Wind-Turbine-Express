@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
 
-# Copyright 2024 Wind Turbine Express.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -144,10 +130,7 @@ class WTEAquabotNode(Node):
 
         else:
             return
-
-        #self.get_logger().info(f'pinger : bearing: {pinger_bearing}, range: {pinger_range}')
-        #self.get_logger().info(f'critical_wind_turbine_x: {self.critical_wind_turbine_x}, critical_wind_turbine_y: {self.critical_wind_turbine_y}')
-
+        
 
     def euler_from_quaternion(self, quaternion):
         """
@@ -242,9 +225,6 @@ class WTEAquabotNode(Node):
 
             self.wind_turbines_coordinates_calcualted = True
 
-        #self.get_logger().info(f"wind_turbines_coordinates : {self.wind_turbines_coordinates}")
-        #self.get_logger().info(f"wind_turbines_distance : {self.wind_turbines_distance}")
-
 
     def imu_callback(self, msg):
         """
@@ -254,10 +234,6 @@ class WTEAquabotNode(Node):
         self.yaw = self.euler_from_quaternion(quaternion)
 
         self.angular_vel_z = msg.angular_velocity.z
-        self.linear_vel_x = msg.linear_acceleration.x
-        self.linear_vel_y = msg.linear_acceleration.y
-
-        #self.get_logger().info(f"yaw: {self.yaw}")
 
 
     def get_point_callback(self, msg):
@@ -339,8 +315,6 @@ class WTEAquabotNode(Node):
             self.cam_goal_pos_pub.publish(self.camera_theta)
         else:
             self.get_logger().warning("Invalid closest_winturbine_angle detected, skipping publish")
-            #self.get_logger().warning(f"closest_wind_turbine_dist : {closest_wind_turbine_dist}")
-            #self.get_logger().warning(f"self.aquabot_coordinate : {self.aquabot_coordinate}")
         # END CAMERA CONTROLLER -------------------------------------------------------------------------------------------------------------------
 
         if not self.its_time_to_stabilise:
@@ -353,23 +327,12 @@ class WTEAquabotNode(Node):
                 speed_controller_derivative = (speed_controller_error - self.speed_controller_previous_error)/self.timer_period
                 thruster_msg.speed = self.speed_controller_k_p*speed_controller_error + self.speed_controller_k_i*self.speed_controller_integral + self.speed_controller_k_d*speed_controller_derivative
                 self.speed_controller_previous_error = speed_controller_error
-
-                #self.get_logger().info(f"speed_controller_error: {speed_controller_error}")
-                #self.get_logger().info(f"speed_controller_integral: {self.speed_controller_integral}")
-                #self.get_logger().info(f"speed_controller_derivative: {speed_controller_derivative}")
-                #self.get_logger().info(f"thruster_msg.speed: {thruster_msg.speed}")
-
-                #self.get_logger().info(f"a_x: {self.aquabot_coordinate[0]}, a_y: {self.aquabot_coordinate[0]}")
-                #self.get_logger().info(f"p_x: {point_x}, p_y: {point_y}")
-                #self.get_logger().info(f"p_a_xd: {point_x - self.aquabot_coordinate[0]}, p_a_yd: {goal_point_to_aquabot_distance}")
                 
                 # Calculate the angle between the boat yaw and the objective
                 thruster_msg.theta = np.arccos((point_x - self.aquabot_coordinate[0])/goal_point_to_aquabot_distance)
 
                 if point_y < self.aquabot_coordinate[1]:
                     thruster_msg.theta = -thruster_msg.theta
-
-                #self.get_logger().info(f"thruster_msg.theta: {thruster_msg.theta}")
 
                 # Uptade aquabot_close_to_wind_turbine to True if the distance between the aquabot and a wind turbine is less than 40m
                 self.aquabot_close_to_wind_turbine = False
@@ -382,14 +345,6 @@ class WTEAquabotNode(Node):
                 else:
                     self.aquabot_close_to_critical_wind_turbine = False
 
-                # Reduce speed if aquabot close to wind turbine
-                if self.aquabot_close_to_wind_turbine:
-                    thruster_msg.speed = thruster_msg.speed*0.5
-
-                # Reduce speed if aquabot close to critical wind turbine
-                #if self.aquabot_close_to_critical_wind_turbine and self.current_task==3:
-                #    thruster_msg.speed = thruster_msg.speed*0.1
-
                 thruster_msg.speed = thruster_msg.speed*(5000/6.17)
                 self.thruster_pub.publish(thruster_msg)
                 return
@@ -400,19 +355,13 @@ class WTEAquabotNode(Node):
 
                 self.thruster_pub.publish(thruster_msg)
 
-                #self.get_logger().info(f"Point ({point_x}, {point_y}) has been reached !")
                 return
         else:
             # STABILIZE
             # critical wind turbine (cwt) to aquabot distance needs to be 10m (+-1m)
             cwt_to_aquabot_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])
-            #self.get_logger().info(f"point_x: {point_x}, point_y: {point_y}")
             cwt_to_point_facing_the_qrcode_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, point_x, point_y)
-            #self.get_logger().info(f"cwt_to_point_facing_the_qrcode_distance: {cwt_to_point_facing_the_qrcode_distance}")
-            #self.get_logger().info(f"cwt_x: {self.critical_wind_turbine_x}, cwt_y: {self.critical_wind_turbine_y}")
-            #self.get_logger().info(f"cwt_to_aquabot_distance: {cwt_to_aquabot_distance}")
             aquabot_to_point_facing_the_qrcode_distance = self.xy_distance(self.aquabot_coordinate[0], self.aquabot_coordinate[1], point_x, point_y)
-
 
             # Aquabot needs to point toward the critical wind turbine
             cwt_orientation = np.arccos((self.critical_wind_turbine_x - self.aquabot_coordinate[0])/cwt_to_aquabot_distance)
@@ -427,11 +376,7 @@ class WTEAquabotNode(Node):
                     cwt_qrcode_orientation = -cwt_qrcode_orientation
 
             self.qr_code_theta.data = cwt_qrcode_orientation
-
-            #self.get_logger().info(f"cwt_qrcode_orientation: {cwt_qrcode_orientation}")
-            self.get_logger().info(f"aquabot_to_point_facing_the_qrcode_distance: {aquabot_to_point_facing_the_qrcode_distance}")
-
-            
+  
             # Speed P Controller
             speed_controller_error = (cwt_to_aquabot_distance - 10)
 

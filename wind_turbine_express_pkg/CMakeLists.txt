@@ -35,6 +35,7 @@ install(
     src/wte_aquabot.py
     src/wte_cv_module.py
     src/wte_planner.py
+    src/tool_planner.py
   DESTINATION 
     lib/${PROJECT_NAME}
 )
