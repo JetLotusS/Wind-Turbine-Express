@@ -31,72 +31,74 @@ class WTEAquabotNode(Node):
         self.qr_code_goal_pose_pub = self.create_publisher(Float64, '/aquabot/stabilisation/goal_pose', 5, callback_group=self.reentrant_group)
         self.critical_wind_turbine_pub = self.create_publisher(Thruster, '/aquabot/critical_wind_turbine_coordinates', 5, callback_group=self.reentrant_group)
 
-        # Create a timer that will call the timer_callback function every 100ms
+        # Créé un timer qui appelle la fonction timer_callback toutes les 100 ms
         self.timer_period = 0.1  # seconds
         self.timer = self.create_timer(self.timer_period, self.navigation_callback, callback_group=self.reentrant_group)
 
-        # Constants
+        # Constantes
         self.origine_latitude = 48.04630
         self.origine_longitude = -4.97632
 
         # Variables
         self.current_task = 1
 
-        self.yaw = 0.0
+        self.yaw = 0.0 # orientation du bateau
 
-        self.nav_point_x = Float64()
-        self.nav_point_y = Float64()
+        self.nav_point_x = Float64() # coordonnée x du point à atteindre
+        self.nav_point_y = Float64() # coordonnée y du point à atteindre
 
-        self.aquabot_coordinate = [0.0, 0.0]
-        self.aquabot_close_to_wind_turbine = False
-        self.aquabot_close_to_critical_wind_turbine = False
-        self.closest_winturbine_angle = 0.0
+        self.aquabot_coordinate = [0.0, 0.0] # coordonée cartésiennes du bateau
+        self.aquabot_close_to_wind_turbine = False # Vrai si le bateau est à moins de 50m d'une éolienne
+        self.aquabot_close_to_critical_wind_turbine = False # Vrai si le bateau est à moins de 50m de l'éolienne critique
+        self.closest_winturbine_angle = 0.0 # L'angle entre le bateau et l'éolienne la plus proche
         
-        self.wt_coordinates_index = 0
-        self.wind_turbines_coordinates = []
-        self.wind_turbines_coordinates_calcualted = False
-        self.wind_turbines_distance = []
+        self.wind_turbines_coordinates = [] # Liste des coordonnées cartésiennes de toutes les éoliennes
+        self.wind_turbines_coordinates_calcualted = False # Vrai si les coordonnée des éoliennes ont été calculées pour la première fois
+        self.wind_turbines_distance = [] # Liste des distances de toutes les éoliennes
 
-        self.critical_wind_turbine_x = 0.0
-        self.critical_wind_turbine_y = 0.0
-        self.critical_wind_turbine_coordinates_calculated = False
-        self.its_time_to_stabilise = False
+        self.critical_wind_turbine_x = 0.0 # coordonnée x de l'éolienne critique
+        self.critical_wind_turbine_y = 0.0 # coordonnée y de l'éolienne critique
+        self.critical_wind_turbine_coordinates_calculated = False # Vrai si les coordonnée de l'éolienne critique ont été calculées pour la première fois
+        self.its_time_to_stabilise = False # Vrai le wte_planner considère que le bateau est assez proche du point de stabilisation
 
         #Speed PID Controller variables
-        self.speed_controller_k_p = 0.15
-        self.speed_controller_k_i = 0.0
-        self.speed_controller_k_d = 0.0
+        self.speed_controller_k_p = 0.15 # Constante de la composante proportionnel du contrôleur de vitesse
+        self.speed_controller_k_i = 0.0 # Non utilisée
+        self.speed_controller_k_d = 0.0 # Non utilisée
         self.speed_controller_previous_error = 0.0
         self.speed_controller_integral = 0.0
 
         # Camera Controller variables
-        self.camera_theta = Float64()
+        self.camera_theta = Float64() # L'angle de la caméra à atteindre
 
         # Variables for stabilisation
-        self.qr_code_theta = Float64()
+        self.qr_code_theta = Float64() # L'angle du point de stabilisation par rapport à l'éolienne critique
 
         self.get_logger().info('Aquabot node started !')
 
 
     def current_phase_callback(self, msg):
         """
-        Get the current phase number
+        Récupère la valeur de la tâche actuelle
         """
         self.current_task = msg.data
-        #self.get_logger().info(f'current_task: {self.current_task}')
+        self.get_logger().info(f'current_task: {self.current_task}')
 
 
     def chat_callback(self, msg):
+        """
+        Reçoit un message du wte_planner pour enclencher la stabilisation
+        """
         data = msg.data
         if data:
             if data == "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !" and self.its_time_to_stabilise == False:
                 self.its_time_to_stabilise = True
-                #self.get_logger().info(f"chat : {data}")
+                self.get_logger().info(f"chat : {data}")
 
 
     def pinger_callback(self, msg):
         """
-        Calcul once the coordinates of the critical wind turbine from the pinger data when task phase update to 2
+        Calculer une fois les coordonnées de l'éolienne critique à partir des données capteur accoustique (pinger) lors de la mise à jour de la tâche à 2
         """
         if self.current_task >= 2 and self.critical_wind_turbine_coordinates_calculated == False:
             msg_cwt_cordinates = Thruster()
@@ -270,7 +272,6 @@ class WTEAquabotNode(Node):
         for wt_coordinates in self.wind_turbines_coordinates:
             wt_distance_to_aquabot = self.xy_distance(wt_coordinates[0], wt_coordinates[1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
             self.wind_turbines_distance.append(wt_distance_to_aquabot)
-        #self.get_logger().warning(f"self.wind_turbines_distance: {self.wind_turbines_distance}")
         
         # Distance between the aquabot and the critical wind turbine
         self.critical_wind_turbines_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])

@@ -63,7 +63,7 @@ class OpenCvDecoder(Node):
             if data:
                 report_msg = String()
                 report_msg.data = data
-                # self.get_logger().info('Decoded data: ' + data)
+                self.get_logger().info('Decoded data: ' + data)
                 self.windturbines_report_publisher.publish(report_msg)
             else:
                 #self.get_logger().info('No QR code detected in the image')
