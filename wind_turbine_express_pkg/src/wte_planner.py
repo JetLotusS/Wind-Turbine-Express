@@ -110,7 +110,7 @@ class WTENavigationNode(Node):
         return x,y
 
     def publier_coord_bateau(self,pos,msg):
-        self.get_logger().info(f"[{msg}] : ({round(pos[0],2)},{round(pos[1],2)})")
+        #self.get_logger().info(f"[{msg}] : ({round(pos[0],2)},{round(pos[1],2)})")
         nav_msg = Thruster() 
         nav_msg.x = float(pos[0])
         nav_msg.y = float(pos[1])
@@ -135,7 +135,7 @@ class WTENavigationNode(Node):
         elif self.current_task >= 2 and self.critical_wind_turbine_coordinates_calculated: # On doit se diriger vers l'éolienne en détresse et si on est proche activer la phase de stabilisation et publier le point a atteindre
             Point_objectif_bateau = self.coord_critique_qr_code()
             if self.dist(Point_objectif_bateau,self.pos_aquabot) < self.tolerance_target_dist: # On est proche du point a atteindre et on a pas encore stabilisé.
-                self.get_logger().info("ENCLENCHER STABILISATION ! ")
+                #self.get_logger().info("ENCLENCHER STABILISATION ! ")
                 self.PHASE_STABILISATION_ENCLENCHEE = True
                 msg = String()
                 msg.data = "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !"
@@ -151,7 +151,7 @@ class WTENavigationNode(Node):
                 Point_objectif_bateau, indice_eolienne_si_prochain_point_est_eolienne = self.next_point()
             else:
                 # self.get_logger().info("Données par encore initialisée")
-                self.get_logger().info("Données eoliennes non-initialisée")
+                #self.get_logger().info("Données eoliennes non-initialisée")
                 Point_objectif_bateau = (0,0)
 
             self.publier_coord_bateau(Point_objectif_bateau,"NORMAL PUB")
@@ -736,10 +736,10 @@ class WTENavigationNode(Node):
 
         #Evalue si il y a des éolienne avec lesquelle on peut rentrer
         if len(point_eolienne_coupe) > 0:
-            self.get_logger().info("Collision avec eolienne possible")
+            #self.get_logger().info("Collision avec eolienne possible")
 
             if len(points_qui_coupent)> 0:
-                self.get_logger().info("Collision avec rocher possible")
+                #self.get_logger().info("Collision avec rocher possible")
                 i_rocher_plus_proche_local = self.indice_plus_proche([self.G[0][i] for i in points_qui_coupent], self.pos_aquabot)
                 i_rocher_plus_proche = points_qui_coupent[i_rocher_plus_proche_local]
                 pos_rocher = self.G[0][i_rocher_plus_proche]
@@ -753,7 +753,7 @@ class WTENavigationNode(Node):
             if len(points_qui_coupent) == 0 or (self.dist(pos_point_passage_eolienne,self.pos_aquabot) < self.dist(pos_rocher,self.pos_aquabot)):
                 # C'est l'éolienne dont il faut s'occuper
                 #On a une eolienne en plein milieu du chemin
-                self.get_logger().info("Eolienne en plein milieu du chemin !!")
+                #self.get_logger().info("Eolienne en plein milieu du chemin !!")
                 # Trouve un chemin autour de l'éolienne pour l'éviter et aller vers le prochain point a atteindre
                 i_min_eolienne_local = self.indice_plus_proche([self.l_graphe_eolienne[i_eolienne_plus_proche][0][i] for i in point_eolienne_coupe], self.pos_aquabot)
                 i_plus_proche_bateau = point_eolienne_coupe[i_min_eolienne_local]
@@ -779,7 +779,8 @@ class WTENavigationNode(Node):
         # self.get_logger().info(f"coord rocher plus proche bateau : {coord_rocher_plus_proche_bateau}")
 
         if len(coord_point_qui_coupent) > 0:
-            self.get_logger().info("Collision avec rocher possible")
+           # self.get_logger().info("Collision avec rocher possible")
+           pass
 
         indice_rocher_connecte_au_caillou = self.composante_connexe(self.G, indice_rocher_plus_proche_bateau)
         

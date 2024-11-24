@@ -83,7 +83,7 @@ class WTEAquabotNode(Node):
         Get the current phase number
         """
         self.current_task = msg.data
-        self.get_logger().info(f'current_task: {self.current_task}')
+        #self.get_logger().info(f'current_task: {self.current_task}')
 
 
     def chat_callback(self, msg):
@@ -91,7 +91,7 @@ class WTEAquabotNode(Node):
         if data:
             if data == "OMG J'AI ATTEINT UNE SUPERBE EOLIENNE ! Elle est dans un état critique, il faut la réparer !" and self.its_time_to_stabilise == False:
                 self.its_time_to_stabilise = True
-                self.get_logger().info(f"chat : {data}")
+                #self.get_logger().info(f"chat : {data}")
 
 
     def pinger_callback(self, msg):
@@ -270,7 +270,7 @@ class WTEAquabotNode(Node):
         for wt_coordinates in self.wind_turbines_coordinates:
             wt_distance_to_aquabot = self.xy_distance(wt_coordinates[0], wt_coordinates[1], self.aquabot_coordinate[0], self.aquabot_coordinate[1])
             self.wind_turbines_distance.append(wt_distance_to_aquabot)
-        self.get_logger().warning(f"self.wind_turbines_distance: {self.wind_turbines_distance}")
+        #self.get_logger().warning(f"self.wind_turbines_distance: {self.wind_turbines_distance}")
         
         # Distance between the aquabot and the critical wind turbine
         self.critical_wind_turbines_distance = self.xy_distance(self.critical_wind_turbine_x, self.critical_wind_turbine_y, self.aquabot_coordinate[0], self.aquabot_coordinate[1])
