@@ -82,7 +82,7 @@ class WTEAquabotNode(Node):
         Récupère la valeur de la tâche actuelle
         """
         self.current_task = msg.data
-        self.get_logger().info(f'current_task: {self.current_task}')
+        #self.get_logger().info(f'current_task: {self.current_task}')
 
 
     def chat_callback(self, msg):
